@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 대상자(토큰) 문서
+    //  - 응답자는 자기 토큰 문서를 읽고(이름 표시), 열람/제출 시각만 갱신할 수 있습니다.
+    //  - 관리 화면은 로그인 없이 동작하므로 생성/삭제도 허용합니다.
+    //    (보안 강화가 필요하면 README의 "Firebase 인증으로 바꾸기"를 참고하세요.)
+    match /recipients/{token} {
+      allow read: if true;
+      allow create, delete: if true;
+      allow update: if true;
+    }
+
+    // 설문 응답
+    //  - 누구나 새 응답을 만들 수 있지만 수정·삭제는 불가능합니다.
+    //  - 통계 화면이 읽어야 하므로 읽기는 허용합니다.
+    match /responses/{id} {
+      allow create: if request.resource.data.keys().hasAll(['answers', 'submittedAt'])
+                    && request.resource.data.submittedAt == request.time;
+      allow read: if true;
+      allow update, delete: if false;
+    }
+  }
+}
