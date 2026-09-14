@@ -45,7 +45,7 @@ const MAIL_TEMPLATE = {
 /* 3) 설문 페이지 주소 (GitHub Pages에 올린 survey.html의 전체 주소)
  *    예: https://아이디.github.io/저장소이름/survey.html
  *    메일에는 이 주소 뒤에 ?t=토큰 이 붙어서 발송됩니다. */
-const SURVEY_BASE_URL = "https://아이디.github.io/저장소이름/survey.html";
+const SURVEY_BASE_URL = "https://github.com/ergoman-ia/Survey/survey.html";
 
 /* 4) 관리자 비밀번호 (SHA-256 해시값)
  *    admin.html 로그인 화면의 "비밀번호 해시 만들기"로 생성한 값을 붙여 넣으세요.
