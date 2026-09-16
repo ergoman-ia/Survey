@@ -245,6 +245,7 @@
     try { localStorage.setItem('adminSurvey', id); } catch (_) {}
     history.replaceState(null, '', 'editor.html?s=' + encodeURIComponent(id));
     setStatus('불러왔습니다', 'ok'); $('surveySel').value = id; renderAll();
+    try { const n = (await store.responses(id).get()).size; if (n && model.status !== 'archived' && currentId === id) $('sStatus').textContent = `상태: 진행 중 · 응답 ${n}건 있음 (문항을 삭제하거나 유형·선택지·척도를 바꾸면 저장할 때 확인을 묻습니다)`; } catch (_) {}
   }
   async function startNew() {
     if (dirty && !await Modal.confirm('저장하지 않은 변경 사항이 있습니다. 버리고 새 설문을 시작할까요?')) { $('surveySel').value = currentId || '__new'; return; }
@@ -403,10 +404,37 @@
     m.questions.forEach(q => { delete q.draft; if (q.options) q.options = q.options.map(o => o.trim()).filter(Boolean); q.title = q.title.trim(); if (!q.description) delete q.description; });
     return m;
   }
+  // 진행 중인 설문의 문항 구조 변경 감지 — 기존 응답과 문항이 맞지 않게 되는 변경만 골라냅니다
+  // (제목·설명·필수 여부·문항 순서·문항 추가는 기존 응답에 영향이 없어 경고하지 않음)
+  function structuralChanges(before, after) {
+    const out = [], num = (arr, q) => arr.indexOf(q) + 1;
+    (before.questions || []).forEach(bq => {
+      const aq = (after.questions || []).find(q => q.id === bq.id);
+      const label = `${num(before.questions, bq)}번 문항(${(bq.title || '').slice(0, 20)})`;
+      if (!aq) return out.push(`${label} 삭제`);
+      if (aq.type !== bq.type) return out.push(`${label} 유형 변경: ${SURVEY_TYPES[bq.type].name} → ${SURVEY_TYPES[aq.type].name}`);
+      if (bq.options) {
+        const gone = bq.options.filter(o => !(aq.options || []).includes(o));
+        if (gone.length) out.push(`${label} 선택지 삭제·수정: ${gone.join(', ')}`);
+      }
+      if (bq.type === 'scale' && (Number(aq.min) !== Number(bq.min) || Number(aq.max) !== Number(bq.max))) out.push(`${label} 척도 범위 변경: ${bq.min}~${bq.max} → ${aq.min}~${aq.max}`);
+      if (bq.type === 'rating' && Number(aq.max) !== Number(bq.max)) out.push(`${label} 별점 개수 변경: ${bq.max} → ${aq.max}`);
+      if (bq.allowOther && !aq.allowOther) out.push(`${label} 기타 직접 입력 해제`);
+    });
+    return out;
+  }
+  // 진행 중이고 응답이 있는 설문이면 저장 전에 확인을 받습니다. false를 돌려주면 저장 취소
+  async function confirmLiveChange(after) {
+    const saved = await store.get(currentId); if (!saved || saved.status === 'archived') return true;
+    const snap = await store.responses(currentId).get(); const n = snap.size; if (!n) return true;
+    const changes = structuralChanges(saved, after); if (!changes.length) return true;
+    return Modal.confirm(`이 설문은 진행 중이며 이미 응답 ${n}건이 들어와 있습니다.\n아래 변경은 기존 응답과 문항이 맞지 않게 되어, 통계에서 빠지거나 다른 답으로 집계될 수 있습니다.\n\n- ${changes.join('\n- ')}\n\n권장: 이 설문은 그대로 두고 관리자 화면의 "복제"로 새 설문을 만들어 진행하세요.\n그래도 지금 설문에 저장할까요?`);
+  }
   $('saveBtn').onclick = async () => {
     const errs = validate(); if (errs.length) return await Modal.alert(errs.join('\n'));
     if (!db) return await Modal.alert('Firebase가 설정되지 않아 저장할 수 없습니다. firebase-config.js를 먼저 설정하세요.');
     try {
+      if (currentId && !await confirmLiveChange(cleanModel())) { setStatus('저장을 취소했습니다', ''); return; }
       if (currentId) await store.save(currentId, cleanModel());
       else { currentId = await store.create(cleanModel()); try { localStorage.setItem('adminSurvey', currentId); } catch (_) {} history.replaceState(null, '', 'editor.html?s=' + encodeURIComponent(currentId)); }
       dirty = false; await refreshList(); renderMeta();

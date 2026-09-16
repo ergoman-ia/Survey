@@ -13,13 +13,17 @@
   h1 { font-size: 20px; margin: 0; color: var(--c); }
   .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
-  .tabs button { padding: 9px 16px; border: 1px solid var(--line); background: #fff; border-radius: 8px; cursor: pointer; font: inherit; }
-  .tabs button.on { background: var(--c); color: #fff; border-color: var(--c); }
+  .tabs button { padding: 10px 18px; border: 1px solid #b85a00; background: #d9651a; color: #fff; border-radius: 8px; cursor: pointer; font: inherit; font-weight: 600; }
+  .tabs button:hover { background: #c4570f; }
+  .tabs button.on { background: #8f3f00; border-color: #8f3f00; box-shadow: inset 0 -3px 0 #ffd9b3; }
   .tab { display: none; } .tab.on { display: block; }
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-  .stat { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
-  .stat b { display: block; font-size: 24px; color: var(--c); }
-  .stat span { color: var(--muted); font-size: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 8px; text-align: center; min-width: 0; }
+  .stat b { display: block; font-size: 22px; color: var(--c); line-height: 1.2; }
+  .stat span { color: var(--muted); font-size: 11px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 900px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .st-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; vertical-align: middle; }
+  .st-open { background: #e3f6ea; color: var(--ok); } .st-closed { background: #fde3e3; color: var(--bad); } .st-archived { background: #eef0f4; color: var(--muted); }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
   input[type=text], input[type=email], input[type=password], select, textarea { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
   textarea { width: 100%; min-height: 90px; }
@@ -68,6 +72,7 @@
   <header>
     <div class="row" style="margin:0">
       <h1 id="surveyTitle">설문 관리</h1>
+      <span class="st-badge st-open" id="surveyState" style="display:none"></span>
       <select id="surveySel" title="관리할 설문 선택" style="max-width:280px"></select>
       <button class="btn sm sec" id="svNew" title="새 설문 만들기">새 설문</button>
       <button class="btn sm sec" id="svEdit">문항 편집</button>
@@ -94,7 +99,7 @@
     <div class="stat"><b id="sFailed">0</b><span>발송 실패</span></div>
     <div class="stat"><b id="sOpened">0</b><span>링크 열람</span></div>
     <div class="stat"><b id="sSubmitted">0</b><span>메일 응답 제출</span></div>
-    <div class="stat"><b id="sRate">0%</b><span>메일 응답률(제출/발송)</span></div>
+    <div class="stat"><b id="sRate">0%</b><span>메일 응답률</span></div>
     <div class="stat"><b id="sOpen">0</b><span>공개 설문 응답</span></div>
     <div class="stat"><b id="sAll">0</b><span>전체 응답 합계</span></div>
   </div>
@@ -103,6 +108,7 @@
     <button class="on" data-tab="recip">대상자·발송 현황</button>
     <button data-tab="stats">응답 통계</button>
     <button data-tab="book">주소록</button>
+    <button data-tab="dblist">전체 DB 리스트</button>
     <button data-tab="setup">설정 확인</button>
   </div>
 
@@ -172,7 +178,6 @@
           <button class="btn" id="sendSelected">선택 대상 발송</button>
           <button class="btn sec" id="sendUnsent">미발송 전체 발송</button>
           <button class="btn sec" id="remindBtn">미제출자 재발송</button>
-          <button class="btn sec" id="exportRecip">현황 CSV</button>
           <button class="btn danger" id="delSelected">선택 삭제</button>
         </div>
       </div>
@@ -271,6 +276,22 @@
         <div class="row" style="margin:0"><input type="text" id="abSearch" placeholder="이름·이메일 검색"><button class="btn sm danger" id="abDelSelected">선택 삭제</button></div>
       </div>
       <div class="tbl"><table><thead><tr><th><input type="checkbox" id="abChkAll"></th><th>이름</th><th>이메일</th><th>소속</th><th>작업</th></tr></thead><tbody id="abBody"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ---------- 탭: 전체 DB 리스트 ---------- -->
+  <div class="tab" id="tab-dblist">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div><h3 style="margin:0">전체 DB 리스트 <span class="muted" id="dbCount"></span></h3></div>
+        <div class="row" style="margin:0"><label class="muted"><input type="checkbox" id="dbArchived" checked> 보관·마감 포함</label><button class="btn sec sm" id="dbRefresh">새로 고침</button></div>
+      </div>
+      <p class="muted">Firestore의 <code>surveys</code> 컬렉션에 저장된 모든 설문과 그 하위 데이터(대상자·응답) 건수입니다. 행을 누르면 그 설문이 선택되어 다른 탭에서 바로 볼 수 있습니다.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>#</th><th>설문 제목</th><th>설문 ID</th><th>상태</th><th>만든 날</th><th>마감</th><th>문항</th><th>대상자</th><th>발송</th><th>열람</th><th>제출</th><th>응답(메일/공개)</th><th>마지막 응답</th><th>작업</th></tr></thead>
+        <tbody id="dbBody"><tr><td colspan="14" class="muted">탭을 열면 읽어 옵니다…</td></tr></tbody>
+      </table></div>
+      <p class="muted" id="dbLists"></p>
     </div>
   </div>
 
@@ -400,6 +421,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     history.replaceState(null, '', 'admin.html?s=' + encodeURIComponent(id));
     $('surveySel').value = id;
     $('surveyTitle').textContent = '설문 관리';
+    renderState();
     document.title = CUR.title + ' — 관리';
     $('svArchive').textContent = CUR.status === 'archived' ? '복원' : '보관';
     unsubs.forEach(u => u()); unsubs = [];
@@ -415,6 +437,14 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       renderStats(); renderGroupFilter(); renderResponses(); renderCharts();
     }, err => console.error(err)));
     renderSetup();
+  }
+  // 상태 표시: 진행 중(초록) / 마감(빨강) / 보관(회색) — index.html과 같은 기준
+  const isClosedSv = sv => sv.closeAfterDeadline && sv.deadline && new Date() > new Date(sv.deadline + 'T23:59:59');
+  const stateOf = sv => sv.status === 'archived' ? 'archived' : isClosedSv(sv) ? 'closed' : 'open';
+  const STATE_LABEL = { open: '진행 중', closed: '마감', archived: '보관' };
+  function renderState() {
+    const el = $('surveyState'); if (!SID) { el.style.display = 'none'; return; }
+    const st = stateOf(CUR); el.className = 'st-badge st-' + st; el.textContent = STATE_LABEL[st] + (st === 'open' && CUR.deadline ? ' · 마감 ' + CUR.deadline : ''); el.style.display = '';
   }
   // 설문이 하나도 없을 때: 예전 구조 데이터가 있으면 가져오기, 아니면 새 설문 만들기 안내
   async function offerFirstSurvey() {
@@ -474,7 +504,42 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + b.dataset.tab));
     if (b.dataset.tab === 'stats') { renderCharts(); renderReport(); }
+    if (b.dataset.tab === 'dblist') renderDbList();
   });
+
+  /* ================= 전체 DB 리스트 ================= */
+  let dbListBusy = false;
+  async function renderDbList() {
+    if (dbListBusy) return; dbListBusy = true;
+    const body = $('dbBody');
+    body.innerHTML = '<tr><td colspan="14" class="muted">읽는 중…</td></tr>';
+    try {
+      const all = await store.list(true);
+      const list = $('dbArchived').checked ? all : all.filter(sv => stateOf(sv) === 'open');
+      $('dbCount').textContent = `설문 ${list.length}건 / 전체 ${all.length}건`;
+      const rows = [];
+      for (const sv of list) {
+        const [rs, ps] = await Promise.all([store.recipients(sv.id).get(), store.responses(sv.id).get()]);
+        const rec = rs.docs.map(d => d.data()), res = ps.docs.map(d => d.data());
+        const last = res.map(r => r.submittedAt).filter(Boolean).map(t => t.toDate ? t.toDate().getTime() : new Date(t).getTime()).sort((a, b) => b - a)[0];
+        rows.push({ sv, rec, res, last });
+      }
+      body.innerHTML = rows.map(({ sv, rec, res, last }, i) => {
+        const st = stateOf(sv), mail = res.filter(r => channelOf(r) === 'email').length;
+        return `<tr data-sid="${esc(sv.id)}" style="cursor:pointer${sv.id === SID ? ';background:#fff8e6' : ''}">
+          <td>${i + 1}</td><td style="white-space:normal;min-width:180px">${esc(sv.title || '(제목 없음)')}${sv.isTest ? ' <span class="badge b-warn">TEST</span>' : ''}</td><td><code>${esc(sv.id)}</code></td>
+          <td><span class="st-badge st-${st}">${STATE_LABEL[st]}</span></td><td>${sv.createdAtMs ? new Date(sv.createdAtMs).toLocaleDateString('ko-KR') : ''}</td><td>${esc(sv.deadline || '')}</td>
+          <td>${(sv.questions || []).length}</td><td>${rec.length}</td><td>${rec.filter(r => r.sendStatus === 'sent').length}</td><td>${rec.filter(r => r.openedAt).length}</td><td>${rec.filter(r => r.submittedAt).length}</td>
+          <td>${res.length} (${mail}/${res.length - mail})</td><td>${last ? fmt(last) : ''}</td>
+          <td><button class="btn sm sec" data-pick="${esc(sv.id)}">선택</button></td></tr>`;
+      }).join('') || '<tr><td colspan="14" class="muted">설문이 없습니다.</td></tr>';
+      body.querySelectorAll('[data-pick]').forEach(b => b.onclick = async e => { e.stopPropagation(); await selectSurvey(b.dataset.pick); document.querySelector('.tabs button[data-tab=recip]').click(); });
+      body.querySelectorAll('tr[data-sid]').forEach(tr => tr.onclick = async () => { await selectSurvey(tr.dataset.sid); renderDbList(); });
+      try { const cl = await ContactStore.init(db).list(); $('dbLists').textContent = `주소록(contactLists): ${cl.length}개 · 총 ${cl.reduce((n, l) => n + l.members.length, 0)}명`; } catch (_) {}
+    } catch (err) { body.innerHTML = `<tr><td colspan="14" style="color:var(--bad)">읽기 실패: ${esc(err.message)}</td></tr>`; }
+    dbListBusy = false;
+  }
+  $('dbRefresh').onclick = renderDbList; $('dbArchived').onchange = renderDbList;
 
   /* ================= 요약 숫자 ================= */
   function renderStats() {
@@ -764,11 +829,6 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     if (!await Modal.confirm(`${ids.length}명을 삭제할까요?`)) return;
     const batch = db.batch(); ids.forEach(id => batch.delete(store.recipients(SID).doc(id))); await batch.commit();
   };
-  $('exportRecip').onclick = () => {
-    const rows = [['이름', '이메일', '소속', '발송 상태', '발송 시각', '발송 횟수', '최초 열람', '열람 횟수', '제출 시각', '설문 링크']];
-    recipients.forEach(r => rows.push([r.name, r.email, r.group || '', r.sendStatus === 'sent' ? '발송' : r.sendStatus === 'failed' ? '실패' : '미발송', fmt(r.sentAt), r.sendCount || 0, fmt(r.openedAt), r.openCount || 0, fmt(r.submittedAt), surveyLink(r.id)]));
-    downloadCSV(`발송현황_${new Date().toISOString().slice(0, 10)}.csv`, rows);
-  };
 
   /* ================= 통계 ================= */
   const charts = {};
@@ -897,7 +957,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     list.forEach(r => Object.entries(r.answers || {}).forEach(([k, v]) => { if (qids.has(k) || v == null) return; const o = orphan[k] = orphan[k] || { count: 0, samples: [] }; o.count++; if (o.samples.length < 3) o.samples.push(Array.isArray(v) ? v.join(', ') : String(v)); }));
     const noAnswers = list.filter(r => !r.answers || typeof r.answers !== 'object').length;
     const keys = Object.keys(orphan);
-    if (!keys.length && !noAnswers) { $('diagArea').innerHTML = ''; return; }
+    if (!keys.length && !noAnswers) { $('diagArea').innerHTML = list.length ? `<p class="muted" style="margin:-2px 0 10px">응답 데이터 점검: 이상 없음 (응답 ${list.length}건이 모두 현재 문항과 일치합니다)</p>` : ''; return; }
     $('diagArea').innerHTML = `<div class="hint" style="background:#fff4f4;border-color:#f3c0c0">
       <b>응답 데이터 점검</b>
       ${noAnswers ? `<div>answers 항목이 없는 응답 ${noAnswers}건이 있습니다(집계에서 제외됨).</div>` : ''}
