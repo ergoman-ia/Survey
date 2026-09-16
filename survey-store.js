@@ -137,3 +137,36 @@ const SurveyStore = {
     return { id, ...moved };
   }
 };
+
+/* =========================================================
+ * 주소록(이메일 목록) 저장소 — 설문과 독립적으로 보관되어 어느 설문에서든 가져와 쓸 수 있습니다.
+ *   contactLists/{목록ID}  { name, members: [ { name, email, group } ], createdAtMs, updatedAt }
+ *   (한 목록에 수천 명까지 저장 가능. 문서 크기 한도 때문에 5,000명을 넘으면 목록을 나누세요)
+ * ========================================================= */
+const ContactStore = {
+  db: null,
+  init(db) { this.db = db; return this; },
+  col() { return this.db.collection('contactLists'); },
+  normalize(members) {
+    const seen = new Set(), out = [];
+    for (const m of members || []) {
+      const email = String(m.email || '').trim().toLowerCase(), name = String(m.name || '').trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || seen.has(email)) continue;
+      seen.add(email); out.push({ name, email, group: String(m.group || '').trim() });
+    }
+    return out;
+  },
+  async list() {
+    const snap = await this.col().get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data(), members: d.data().members || [] })).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  },
+  async get(id) { const s = await this.col().doc(id).get(); return s.exists ? { id: s.id, ...s.data(), members: s.data().members || [] } : null; },
+  async create(name, members) {
+    const ref = this.col().doc();
+    await ref.set({ name: String(name).trim(), members: this.normalize(members), createdAtMs: Date.now(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    return ref.id;
+  },
+  async rename(id, name) { await this.col().doc(id).set({ name: String(name).trim(), updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); },
+  async setMembers(id, members) { await this.col().doc(id).set({ members: this.normalize(members), updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); },
+  async remove(id) { await this.col().doc(id).delete(); }
+};

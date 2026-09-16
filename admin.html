@@ -96,6 +96,7 @@
   <div class="tabs">
     <button class="on" data-tab="recip">대상자·발송 현황</button>
     <button data-tab="stats">응답 통계</button>
+    <button data-tab="book">주소록</button>
     <button data-tab="setup">설정 확인</button>
   </div>
 
@@ -108,6 +109,14 @@
         <input type="email" id="nEmail" placeholder="이메일" style="min-width:240px">
         <input type="text" id="nGroup" placeholder="소속(선택)">
         <button class="btn" id="addOne">추가</button>
+      </div>
+      <div class="row" style="margin-top:4px">
+        <span class="muted">주소록에서 가져오기:</span>
+        <select id="abPick"><option value="">주소록 선택</option></select>
+        <button class="btn sec" id="abImport">대상자로 추가</button>
+        <button class="btn sec" id="abImportSend">추가 후 바로 발송</button>
+        <span style="flex:1"></span>
+        <button class="btn sec" id="abSaveCurrent" title="현재 설문의 대상자 전체를 새 주소록으로 저장">현재 대상자를 주소록으로 저장</button>
       </div>
       <details>
         <summary class="muted" style="cursor:pointer">여러 명 한꺼번에 등록 (한 줄에 한 명: 이름, 이메일, 소속)</summary>
@@ -197,6 +206,60 @@
     <div class="card">
       <h3 style="margin-top:0">응답 목록</h3>
       <div class="tbl"><table><thead><tr><th>제출 시각</th><th>경로</th><th>이름</th><th>이메일</th><th>소속</th><th>작업</th></tr></thead><tbody id="respBody"></tbody></table></div>
+    </div>
+  </div>
+
+  <!-- ---------- 탭: 주소록 ---------- -->
+  <div class="tab" id="tab-book">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div class="row" style="margin:0">
+          <h3 style="margin:0">주소록</h3>
+          <select id="abSel" style="min-width:220px"></select>
+          <button class="btn sm sec" id="abNew">새 주소록</button>
+          <button class="btn sm sec" id="abRename">이름 바꾸기</button>
+          <button class="btn sm danger" id="abDelete">삭제</button>
+        </div>
+        <div class="row" style="margin:0">
+          <button class="btn" id="abToSurvey">이 주소록을 현재 설문 대상자로 추가</button>
+          <button class="btn sec" id="abExport">CSV 내려받기</button>
+        </div>
+      </div>
+      <p class="muted">교수 명단, 안전보건 전문기관, 교육 전문기관처럼 자주 쓰는 이메일 목록을 이름을 붙여 보관해 두고, 어느 설문에서든 대상자로 가져올 수 있습니다. 주소록은 설문과 별개로 저장되며 설문을 삭제해도 남습니다.</p>
+    </div>
+    <div class="card" id="abEditor" style="display:none">
+      <h3 style="margin:0 0 8px">사람 추가</h3>
+      <div class="row">
+        <input type="text" id="abName" placeholder="이름">
+        <input type="email" id="abEmail" placeholder="이메일" style="min-width:240px">
+        <input type="text" id="abGroup" placeholder="소속(선택)">
+        <button class="btn" id="abAddOne">추가</button>
+      </div>
+      <details>
+        <summary class="muted" style="cursor:pointer">여러 명 한꺼번에 추가 (한 줄에 한 명: 이름, 이메일, 소속)</summary>
+        <textarea id="abBulk" placeholder="홍길동, hong@example.com, 안전팀&#10;김철수, kim@example.com"></textarea>
+        <div class="row" style="margin-top:8px"><button class="btn" id="abAddBulk">일괄 추가</button></div>
+      </details>
+      <details style="margin-top:8px">
+        <summary class="muted" style="cursor:pointer">CSV 파일에서 추가</summary>
+        <div class="row" style="margin-top:8px"><input type="file" id="abCsvFile" accept=".csv,.txt,.tsv"><span class="muted">첫 줄이 제목 줄이면 자동 인식, 한글 인코딩 자동 판별</span></div>
+        <div id="abCsvArea" style="display:none">
+          <div class="row">
+            <label>이름 열 <select id="abMapName"></select></label>
+            <label>이메일 열 <select id="abMapEmail"></select></label>
+            <label>소속 열 <select id="abMapGroup"></select></label>
+            <label><input type="checkbox" id="abCsvHeader"> 첫 줄은 제목 줄</label>
+          </div>
+          <div class="tbl"><table id="abCsvTable"></table></div>
+          <p class="muted" id="abCsvSummary"></p>
+          <div class="row"><button class="btn" id="abCsvAdd">주소록에 추가</button><button class="btn sec" id="abCsvCancel">취소</button></div>
+        </div>
+      </details>
+      <div class="row" style="margin-top:14px;justify-content:space-between">
+        <h3 style="margin:0">명단 <span class="muted" id="abCount"></span></h3>
+        <div class="row" style="margin:0"><input type="text" id="abSearch" placeholder="이름·이메일 검색"><button class="btn sm danger" id="abDelSelected">선택 삭제</button></div>
+      </div>
+      <div class="tbl"><table><thead><tr><th><input type="checkbox" id="abChkAll"></th><th>이름</th><th>이메일</th><th>소속</th><th>작업</th></tr></thead><tbody id="abBody"></tbody></table></div>
     </div>
   </div>
 
@@ -302,6 +365,7 @@
     if (started) return;
     started = true;
     await refreshSurveys();
+    refreshLists().catch(err => console.warn('주소록을 읽지 못했습니다.', err));
     const want = new URLSearchParams(location.search).get('s') || localStorage.getItem('adminSurvey');
     if (surveys.length) await selectSurvey(surveys.some(x => x.id === want) ? want : surveys[0].id);
     else { $('conn').textContent = '설문이 없습니다'; renderSetup(); await offerFirstSurvey(); }
@@ -508,7 +572,6 @@
     $('nName').value = $('nEmail').value = ''; $('nName').focus();
   };
   /* ---- CSV 주소록 불러오기 ---- */
-  let csvRows = [];
   function parseCSV(text) {
     text = text.replace(/^\uFEFF/, '');
     const first = text.split(/\r?\n/)[0] || '';
@@ -543,49 +606,45 @@
     if (group < 0) group = [...Array(cols).keys()].find(i => i !== email && i !== name) ?? -1;
     return { isHeader, name, email, group };
   }
-  function renderCsvPreview() {
-    const hdr = $('csvHeader').checked, m = { name: +$('mapName').value, email: +$('mapEmail').value, group: +$('mapGroup').value };
-    const data = csvRows.slice(hdr ? 1 : 0);
-    const existing = new Set(recipients.map(r => r.email.toLowerCase()));
-    let ok = 0, dup = 0, bad = 0;
-    const seen = new Set();
-    data.forEach(r => {
-      const e = (r[m.email] || '').toLowerCase(), n = r[m.name] || '';
-      if (!n || !emailOk(e)) bad++; else if (existing.has(e) || seen.has(e)) dup++; else { ok++; seen.add(e); }
-    });
-    $('csvTable').innerHTML = '<tr><th>#</th><th>이름</th><th>이메일</th><th>소속</th><th>판정</th></tr>' + data.slice(0, 15).map((r, i) => {
-      const e = (r[m.email] || '').toLowerCase(), n = r[m.name] || '';
-      const st = (!n || !emailOk(e)) ? '<span class="badge b-bad">형식 오류</span>' : existing.has(e) ? '<span class="badge b-gray">이미 등록</span>' : '<span class="badge b-ok">등록 예정</span>';
-      return `<tr><td>${i + 1}</td><td>${esc(n)}</td><td>${esc(r[m.email] || '')}</td><td>${esc(m.group >= 0 ? (r[m.group] || '') : '')}</td><td>${st}</td></tr>`;
-    }).join('') + (data.length > 15 ? `<tr><td colspan="5" class="muted">… 외 ${data.length - 15}행</td></tr>` : '');
-    $('csvSummary').textContent = `총 ${data.length}행: 등록 예정 ${ok}명 / 이미 등록·중복 ${dup}명 / 형식 오류 ${bad}명`;
-    $('csvAdd').disabled = $('csvAddSend').disabled = !ok;
+  // CSV 가져오기 부품: 같은 화면 부품(열 선택·미리 보기·버튼)을 대상자 탭과 주소록 탭에서 함께 씁니다.
+  //   ids: { file, area, name, email, group, header, table, summary, buttons[] }
+  //   existing(): 이미 등록된 이메일 Set (판정용)   /   onApply(items, buttonId): 버튼을 눌렀을 때
+  function makeCsvImporter(ids, existing, onApply) {
+    let rows = [];
+    const map = () => ({ name: +$(ids.name).value, email: +$(ids.email).value, group: +$(ids.group).value });
+    const items = () => { const hdr = $(ids.header).checked, m = map(); return rows.slice(hdr ? 1 : 0).map(r => ({ name: r[m.name] || '', email: r[m.email] || '', group: m.group >= 0 ? (r[m.group] || '') : '' })); };
+    function preview() {
+      const hdr = $(ids.header).checked, m = map(), data = rows.slice(hdr ? 1 : 0), ex = existing();
+      let ok = 0, dup = 0, bad = 0; const seen = new Set();
+      data.forEach(r => { const e = (r[m.email] || '').toLowerCase(), n = r[m.name] || ''; if (!n || !emailOk(e)) bad++; else if (ex.has(e) || seen.has(e)) dup++; else { ok++; seen.add(e); } });
+      $(ids.table).innerHTML = '<tr><th>#</th><th>이름</th><th>이메일</th><th>소속</th><th>판정</th></tr>' + data.slice(0, 15).map((r, i) => {
+        const e = (r[m.email] || '').toLowerCase(), n = r[m.name] || '';
+        const st = (!n || !emailOk(e)) ? '<span class="badge b-bad">형식 오류</span>' : ex.has(e) ? '<span class="badge b-gray">이미 있음</span>' : '<span class="badge b-ok">추가 예정</span>';
+        return `<tr><td>${i + 1}</td><td>${esc(n)}</td><td>${esc(r[m.email] || '')}</td><td>${esc(m.group >= 0 ? (r[m.group] || '') : '')}</td><td>${st}</td></tr>`;
+      }).join('') + (data.length > 15 ? `<tr><td colspan="5" class="muted">… 외 ${data.length - 15}행</td></tr>` : '');
+      $(ids.summary).textContent = `총 ${data.length}행: 추가 예정 ${ok}명 / 이미 있음·중복 ${dup}명 / 형식 오류 ${bad}명`;
+      ids.buttons.forEach(b => $(b).disabled = !ok);
+    }
+    const reset = () => { $(ids.area).style.display = 'none'; $(ids.file).value = ''; rows = []; };
+    $(ids.file).onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      rows = parseCSV(decodeBuffer(await f.arrayBuffer()));
+      if (!rows.length) { alert('파일에서 읽을 내용이 없습니다.'); return; }
+      const g = guessColumns(rows), cols = Math.max(...rows.map(r => r.length));
+      const opts = sel => Array.from({ length: cols }, (_, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${i + 1}열${g.isHeader && rows[0][i] ? ' (' + esc(rows[0][i]) + ')' : ''}</option>`).join('');
+      $(ids.name).innerHTML = opts(g.name); $(ids.email).innerHTML = opts(g.email);
+      $(ids.group).innerHTML = '<option value="-1">없음</option>' + opts(g.group);
+      $(ids.header).checked = g.isHeader; $(ids.area).style.display = ''; preview();
+    };
+    [ids.name, ids.email, ids.group, ids.header].forEach(id => $(id).onchange = preview);
+    ids.buttons.forEach(b => $(b).onclick = async () => { const it = items(); reset(); await onApply(it, b); });
+    return { reset };
   }
-  function csvItems() {
-    const hdr = $('csvHeader').checked, m = { name: +$('mapName').value, email: +$('mapEmail').value, group: +$('mapGroup').value };
-    return csvRows.slice(hdr ? 1 : 0).map(r => ({ name: r[m.name] || '', email: r[m.email] || '', group: m.group >= 0 ? (r[m.group] || '') : '' }));
-  }
-  $('csvFile').onchange = async e => {
-    const f = e.target.files[0]; if (!f) return;
-    csvRows = parseCSV(decodeBuffer(await f.arrayBuffer()));
-    if (!csvRows.length) { alert('파일에서 읽을 내용이 없습니다.'); return; }
-    const g = guessColumns(csvRows);
-    const cols = Math.max(...csvRows.map(r => r.length));
-    const opts = sel => Array.from({ length: cols }, (_, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${i + 1}열${g.isHeader && csvRows[0][i] ? ' (' + esc(csvRows[0][i]) + ')' : ''}</option>`).join('');
-    $('mapName').innerHTML = opts(g.name); $('mapEmail').innerHTML = opts(g.email);
-    $('mapGroup').innerHTML = '<option value="-1">없음</option>' + opts(g.group);
-    $('csvHeader').checked = g.isHeader;
-    $('csvArea').style.display = '';
-    renderCsvPreview();
-  };
-  ['mapName', 'mapEmail', 'mapGroup', 'csvHeader'].forEach(id => $(id).onchange = renderCsvPreview);
-  $('csvCancel').onclick = () => { $('csvArea').style.display = 'none'; $('csvFile').value = ''; csvRows = []; };
-  $('csvAdd').onclick = async () => { await addRecipients(csvItems()); $('csvCancel').onclick(); };
-  $('csvAddSend').onclick = async () => {
-    const created = await addRecipients(csvItems());
-    $('csvCancel').onclick();
-    if (created.length) await sendMany(created);
-  };
+  const recipCsv = makeCsvImporter(
+    { file: 'csvFile', area: 'csvArea', name: 'mapName', email: 'mapEmail', group: 'mapGroup', header: 'csvHeader', table: 'csvTable', summary: 'csvSummary', buttons: ['csvAdd', 'csvAddSend'] },
+    () => new Set(recipients.map(r => r.email.toLowerCase())),
+    async (items, btn) => { const created = await addRecipients(items); if (btn === 'csvAddSend' && created.length) await sendMany(created); });
+  $('csvCancel').onclick = recipCsv.reset;
 
   $('addBulk').onclick = async () => {
     const lines = $('bulk').value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -778,6 +837,100 @@
     downloadCSV(`설문응답_${new Date().toISOString().slice(0, 10)}.csv`, rows);
   };
   $('printBtn').onclick = () => window.print();
+
+  /* ================= 주소록 ================= */
+  const book = ContactStore.init(db);
+  let lists = [], AB = null;   // 주소록 목록, 선택한 주소록
+  async function refreshLists(keepId) {
+    lists = await book.list();
+    const opt = lists.map(l => `<option value="${esc(l.id)}">${esc(l.name)} (${l.members.length}명)</option>`).join('');
+    $('abSel').innerHTML = opt || '<option value="">(주소록 없음)</option>';
+    $('abPick').innerHTML = '<option value="">주소록 선택</option>' + opt;
+    const id = keepId || (AB && AB.id) || (lists[0] && lists[0].id);
+    if (id && lists.some(l => l.id === id)) { $('abSel').value = id; AB = lists.find(l => l.id === id); } else AB = null;
+    renderBook();
+  }
+  function renderBook() {
+    $('abEditor').style.display = AB ? '' : 'none';
+    if (!AB) { $('abBody').innerHTML = ''; return; }
+    const k = $('abSearch').value.trim().toLowerCase();
+    const list = AB.members.filter(m => !k || (m.name + ' ' + m.email + ' ' + (m.group || '')).toLowerCase().includes(k));
+    $('abCount').textContent = `${list.length}명 표시 / 전체 ${AB.members.length}명`;
+    $('abBody').innerHTML = list.map(m => `<tr><td><input type="checkbox" class="abchk" value="${esc(m.email)}"></td><td>${esc(m.name)}</td><td>${esc(m.email)}</td><td>${esc(m.group || '')}</td><td><button class="btn sm danger" data-abdel="${esc(m.email)}">삭제</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">아직 아무도 없습니다. 위에서 추가하세요.</td></tr>';
+    $('abChkAll').checked = false;
+  }
+  async function saveBook(members, msg) {
+    await book.setMembers(AB.id, members);
+    await refreshLists(AB.id);
+    if (msg) alert(msg);
+  }
+  function addToBook(items) {
+    const before = AB.members.length;
+    const merged = book.normalize(AB.members.concat(items));
+    const bad = items.filter(it => !it.name || !emailOk(String(it.email || '').trim().toLowerCase())).length;
+    return saveBook(merged, `추가 ${merged.length - before}명 / 이미 있음·중복 ${items.length - bad - (merged.length - before)}명 / 형식 오류 ${bad}명`);
+  }
+  $('abSel').onchange = e => { AB = lists.find(l => l.id === e.target.value) || null; renderBook(); };
+  $('abSearch').oninput = renderBook;
+  $('abChkAll').onchange = e => document.querySelectorAll('.abchk').forEach(c => c.checked = e.target.checked);
+  $('abNew').onclick = async () => {
+    const name = prompt('새 주소록 이름 (예: 교수 명단, 안전보건 전문기관)'); if (!name || !name.trim()) return;
+    const id = await book.create(name, []); await refreshLists(id);
+  };
+  $('abRename').onclick = async () => {
+    if (!AB) return; const name = prompt('주소록 이름', AB.name); if (!name || !name.trim()) return;
+    await book.rename(AB.id, name); await refreshLists(AB.id);
+  };
+  $('abDelete').onclick = async () => {
+    if (!AB) return; if (!confirm(`주소록 "${AB.name}"(${AB.members.length}명)을 삭제할까요? 이미 설문에 추가된 대상자는 영향을 받지 않습니다.`)) return;
+    await book.remove(AB.id); AB = null; await refreshLists();
+  };
+  $('abAddOne').onclick = async () => {
+    if (!AB) return;
+    await addToBook([{ name: $('abName').value, email: $('abEmail').value, group: $('abGroup').value }]);
+    $('abName').value = $('abEmail').value = ''; $('abName').focus();
+  };
+  $('abAddBulk').onclick = async () => {
+    if (!AB) return;
+    const items = $('abBulk').value.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => { const p = l.split(/\t|,|;/).map(x => x.trim()); return { name: p[0], email: p[1], group: p[2] }; });
+    await addToBook(items); $('abBulk').value = '';
+  };
+  const bookCsv = makeCsvImporter(
+    { file: 'abCsvFile', area: 'abCsvArea', name: 'abMapName', email: 'abMapEmail', group: 'abMapGroup', header: 'abCsvHeader', table: 'abCsvTable', summary: 'abCsvSummary', buttons: ['abCsvAdd'] },
+    () => new Set((AB ? AB.members : []).map(m => m.email)),
+    async items => { if (AB) await addToBook(items); });
+  $('abCsvCancel').onclick = bookCsv.reset;
+  $('abBody').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-abdel]'); if (!b || !AB) return;
+    await saveBook(AB.members.filter(m => m.email !== b.dataset.abdel));
+  });
+  $('abDelSelected').onclick = async () => {
+    if (!AB) return; const sel = new Set([...document.querySelectorAll('.abchk:checked')].map(c => c.value));
+    if (!sel.size) return alert('선택된 사람이 없습니다.');
+    if (!confirm(`${sel.size}명을 주소록에서 뺄까요?`)) return;
+    await saveBook(AB.members.filter(m => !sel.has(m.email)));
+  };
+  $('abExport').onclick = () => {
+    if (!AB) return;
+    downloadCSV(`주소록_${AB.name}.csv`, [['이름', '이메일', '소속'], ...AB.members.map(m => [m.name, m.email, m.group || ''])]);
+  };
+  // 주소록 → 현재 설문 대상자
+  async function importList(id, sendAfter) {
+    if (!SID) return alert('먼저 설문을 선택하세요.');
+    const l = lists.find(x => x.id === id) || await book.get(id); if (!l) return alert('주소록을 선택하세요.');
+    if (!confirm(`주소록 "${l.name}" ${l.members.length}명을 현재 설문 "${CUR.title}"의 대상자로 추가할까요? (이미 등록된 이메일은 건너뜁니다)`)) return;
+    const created = await addRecipients(l.members);
+    if (sendAfter && created.length) await sendMany(created);
+  }
+  $('abToSurvey').onclick = () => AB && importList(AB.id, false);
+  $('abImport').onclick = () => importList($('abPick').value, false);
+  $('abImportSend').onclick = () => importList($('abPick').value, true);
+  $('abSaveCurrent').onclick = async () => {
+    if (!recipients.length) return alert('현재 설문에 대상자가 없습니다.');
+    const name = prompt(`현재 대상자 ${recipients.length}명을 새 주소록으로 저장합니다. 주소록 이름:`, CUR.title + ' 대상자'); if (!name || !name.trim()) return;
+    const id = await book.create(name, recipients.map(r => ({ name: r.name, email: r.email, group: r.group || '' })));
+    await refreshLists(id); alert('주소록으로 저장했습니다. 주소록 탭에서 확인할 수 있습니다.');
+  };
 
   /* ================= 설정 확인 ================= */
   function renderSetup() {

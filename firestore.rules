@@ -25,6 +25,11 @@ service cloud.firestore {
       }
     }
 
+    // 주소록(이메일 목록) — 설문과 무관하게 보관. 관리 화면만 사용
+    match /contactLists/{listId} {
+      allow read, write: if true;   // 관리자 인증을 붙이면 request.auth != null로 제한하세요
+    }
+
     // 예전 구조(가져오기 전용). 새 구조로 옮긴 뒤에는 이 세 블록을 지워도 됩니다.
     match /config/{doc} { allow read: if true; allow write: if false; }
     match /recipients/{token} { allow read: if true; allow write: if false; }
