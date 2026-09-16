@@ -82,6 +82,12 @@
     </div>
   </header>
 
+  <div class="hint" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+    <b>테스트</b>
+    <button class="btn sm" id="testMake">TEST 설문 만들기 (임의 응답 100건)</button>
+    <button class="btn sm danger" id="testWipe">TEST 설문 일괄 삭제</button>
+    <span class="muted" id="testInfo">모든 문항 유형과 주관식 2개가 들어 있는 시험용 설문을 만들어 통계·AI 기능을 확인할 수 있습니다. 시험용 설문은 이 버튼으로만 한꺼번에 지워지고 실제 설문에는 영향이 없습니다.</span>
+  </div>
   <div class="stats" style="margin-bottom:16px">
     <div class="stat"><b id="sTotal">0</b><span>대상자</span></div>
     <div class="stat"><b id="sSent">0</b><span>발송 완료</span></div>
@@ -205,6 +211,7 @@
       </div>
     </div>
     <p class="muted" id="aiInfo" style="margin:-4px 0 10px"></p>
+    <div id="diagArea"></div>
     <div id="statsArea"></div>
     <div id="reportArea"></div>
     <div class="card">
@@ -299,9 +306,13 @@
 <!-- 라이브러리 -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<!-- 차트·QR 라이브러리는 저장소 안(vendor/)에 두어 외부 CDN이 막힌 환경에서도 동작합니다 -->
-<script src="vendor/chart.umd.js"></script>
-<script src="vendor/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+// CDN이 막힌 환경이면 저장소 안 사본(vendor/)을 대신 읽습니다(선택 사항: vendor 폴더가 없으면 표만 표시).
+if (!window.Chart) document.write('<script src="vendor/chart.umd.js"><\/script>');
+if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script>');
+</script>
 <script src="firebase-config.js"></script>
 <script src="survey-config.js"></script><!-- 새 설문의 기본 틀·예전 데이터 가져오기용 -->
 <script src="ui-modal.js"></script>
@@ -879,6 +890,42 @@
     try { renderChartsInner(); }
     catch (err) { console.error(err); $('aiInfo').innerHTML = '<span style="color:var(--bad)">통계 그리기 오류: ' + esc(err.message) + '</span>'; }
   }
+  // 응답 데이터에 있지만 현재 문항 목록에 없는 키를 찾아 연결(수정)할 수 있게 합니다.
+  function renderDiag(list) {
+    const qids = new Set(CUR.questions.map(q => q.id));
+    const orphan = {};   // key → { count, samples }
+    list.forEach(r => Object.entries(r.answers || {}).forEach(([k, v]) => { if (qids.has(k) || v == null) return; const o = orphan[k] = orphan[k] || { count: 0, samples: [] }; o.count++; if (o.samples.length < 3) o.samples.push(Array.isArray(v) ? v.join(', ') : String(v)); }));
+    const noAnswers = list.filter(r => !r.answers || typeof r.answers !== 'object').length;
+    const keys = Object.keys(orphan);
+    if (!keys.length && !noAnswers) { $('diagArea').innerHTML = ''; return; }
+    $('diagArea').innerHTML = `<div class="hint" style="background:#fff4f4;border-color:#f3c0c0">
+      <b>응답 데이터 점검</b>
+      ${noAnswers ? `<div>answers 항목이 없는 응답 ${noAnswers}건이 있습니다(집계에서 제외됨).</div>` : ''}
+      ${keys.length ? `<div style="margin-top:4px">현재 문항 목록에 없는 응답 키 ${keys.length}개가 있어 통계에 잡히지 않습니다. 문항 ID가 바뀐 경우(문항을 다시 만들었거나 다른 정의로 응답이 들어온 경우)입니다. 아래에서 어느 문항의 답인지 연결하면 응답 데이터가 고쳐집니다.</div>
+      <table style="margin-top:6px"><tr><th>응답 키</th><th>건수</th><th>답 예시</th><th>연결할 문항</th></tr>
+      ${keys.map(k => `<tr><td><code>${esc(k)}</code></td><td>${orphan[k].count}</td><td style="white-space:normal">${esc(orphan[k].samples.join(' / '))}</td>
+        <td><select data-map="${esc(k)}"><option value="">(연결 안 함)</option>${CUR.questions.map((q, i) => `<option value="${esc(q.id)}">${i + 1}. ${esc(q.title.slice(0, 30))}</option>`).join('')}</select></td></tr>`).join('')}
+      </table>
+      <div class="row" style="margin-top:8px"><button class="btn sm" id="diagApply">선택한 연결로 응답 데이터 고치기</button><span class="muted">응답 문서의 answers에서 예전 키를 선택한 문항 ID로 바꿉니다. 되돌릴 수 없으니 예시 답을 보고 신중히 연결하세요.</span></div>` : ''}
+    </div>`;
+    const btn = $('diagApply'); if (!btn) return;
+    btn.onclick = async () => {
+      const map = {}; $('diagArea').querySelectorAll('select[data-map]').forEach(sel => { if (sel.value) map[sel.dataset.map] = sel.value; });
+      if (!Object.keys(map).length) return Modal.alert('연결할 문항을 하나 이상 선택하세요.');
+      if (!await Modal.confirm(`응답 ${list.length}건의 데이터를 고칩니다.\n` + Object.entries(map).map(([k, v]) => `${k} → ${CUR.questions.find(q => q.id === v).title}`).join('\n') + '\n\n진행할까요?')) return;
+      let batch = db.batch(), n = 0, changed = 0;
+      for (const r of list) {
+        const a = r.answers || {}; let touched = false;
+        for (const [k, v] of Object.entries(map)) if (a[k] != null) { if (a[v] == null) a[v] = a[k]; delete a[k]; touched = true; }
+        if (!touched) continue;
+        batch.update(store.responses(SID).doc(r.id), { answers: a }); changed++;
+        if (++n >= 400) { await batch.commit(); batch = db.batch(); n = 0; }
+      }
+      if (n) await batch.commit();
+      await Modal.alert(`응답 ${changed}건을 고쳤습니다. 통계가 다시 계산됩니다.`);
+    };
+  }
+
   function renderChartsInner() {
     if (!document.getElementById('tab-stats').classList.contains('on')) return;
     const list = filteredResponses();
@@ -887,6 +934,7 @@
     $('respUpdated').textContent = list.length ? `(최근 제출: ${fmt(list[0].submittedAt)})` : '';
     Object.values(charts).forEach(c => c.destroy()); for (const k in charts) delete charts[k];
 
+    renderDiag(list);
     $('statsArea').innerHTML = CUR.questions.map((q, i) => {
       let inner = '';
       if (q.type === 'short' || q.type === 'long' || q.type === 'text') {
@@ -922,7 +970,7 @@
       $('t_' + q.id).innerHTML = `<tr><th>항목</th><th>응답 수</th><th>비율${q.type === 'multi' ? '(응답자 기준)' : ''}</th></tr>` +
         labels.map((l, i) => `<tr><td>${esc(l)}</td><td>${counts[i]}</td><td>${total ? Math.round(counts[i] / total * 100) : 0}%<div class="progress"><i style="width:${total ? counts[i] / total * 100 : 0}%"></i></div></td></tr>`).join('') + extra;
 
-      if (!window.Chart) { $('c_' + q.id).parentElement.innerHTML = '<p class="muted">차트 라이브러리(vendor/chart.umd.js)를 불러오지 못해 표로만 표시합니다. vendor 폴더가 저장소에 올라갔는지 확인하세요.</p>'; continue; }
+      if (!window.Chart) { $('c_' + q.id).parentElement.innerHTML = '<p class="muted">차트 라이브러리를 불러오지 못해 표로만 표시합니다.</p>'; continue; }
       const colors = labels.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
       const pct = v => total ? Math.round(v / total * 100) : 0;
       if (numeric) {
@@ -970,6 +1018,83 @@
     downloadCSV(`설문응답_${new Date().toISOString().slice(0, 10)}.csv`, rows);
   };
   $('printBtn').onclick = () => window.print();
+
+  /* ================= TEST 설문 (시험용 데이터) ================= */
+  const TEST_FLAG = 'isTest';
+  function makeTestSurvey() {
+    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+    const weighted = ws => { const t = ws.reduce((a, b) => a + b, 0); let r = Math.random() * t; for (let i = 0; i < ws.length; i++) { r -= ws[i]; if (r < 0) return i; } return ws.length - 1; };
+    const def = { title: 'TEST 설문 (임의 데이터 100건)', description: '통계·AI 기능 확인용 시험 설문입니다. 실제 응답이 아닙니다.', deadline: '2026-12-31', closeAfterDeadline: false, openEnabled: true, status: 'active', [TEST_FLAG]: true,
+      questions: [
+        { id: 'tq1', type: 'single', title: '참여하신 교육 과정은 무엇입니까?', required: true, options: ['공정안전관리(PSM) 기본', '위험성평가 실무', '산업안전보건법 개정 사항'], allowOther: true },
+        { id: 'tq2', type: 'scale', title: '교육 내용은 업무에 얼마나 도움이 되었습니까?', required: true, min: 1, max: 5, labels: ['전혀 도움이 안 됨', '매우 도움이 됨'] },
+        { id: 'tq3', type: 'rating', title: '강사의 전달력을 별점으로 평가해 주세요.', required: true, max: 5, icon: 'star' },
+        { id: 'tq4', type: 'multi', title: '앞으로 듣고 싶은 주제를 모두 골라 주세요.', required: false, options: ['화학 물질 관리', '밀폐 공간 작업', '전기 안전', '근골격계 질환 예방', '사고 사례 분석'] },
+        { id: 'tq5', type: 'dropdown', title: '근무 지역을 선택하세요.', required: true, options: ['서울', '경기', '충청', '영남', '호남', '강원·제주'] },
+        { id: 'tq6', type: 'short', title: '교육 중 가장 기억에 남는 내용을 한 줄로 적어 주세요.', required: false },
+        { id: 'tq7', type: 'long', title: '교육 개선을 위한 의견을 자유롭게 적어 주세요.', required: false }
+      ] };
+    const groups = ['안전팀', '생산1팀', '생산2팀', '품질팀', '설비팀', '연구소', '경영지원'];
+    const surnames = '김이박최정강조윤장임한오서신권황안송류전홍'.split(''), given = ['민수', '서연', '지훈', '수빈', '현우', '지민', '예은', '도현', '하은', '준호', '유진', '성민', '가영', '태현', '소희', '재원', '은지', '동현', '미래', '승현'];
+    const shortPool = ['위험성평가 5단계 절차', '아차 사고 사례 분석', '화학 물질 MSDS 읽는 법', '밀폐 공간 가스 측정 실습', '강사의 현장 경험담', '개정 법령 벌칙 조항', '사고 영상 시청', '조별 토론', '체크리스트 작성 실습', '보호구 착용 실습', '중대재해처벌법 사례', '위험 요인 발굴 방법', '작업 전 안전 점검(TBM)', '안전 문화 사례', '기억에 남는 것이 없음'];
+    const longPool = [
+      '실습 시간이 너무 짧았습니다. 이론보다 현장 사례와 실습 비중을 늘려 주세요.', '강의 자료를 미리 배포해 주시면 예습이 가능할 것 같습니다.', '점심 이후 시간대는 집중이 어려웠습니다. 쉬는 시간을 조금 더 자주 주면 좋겠습니다.',
+      '우리 사업장 규모에 맞는 사례가 부족했습니다. 중소기업 사례를 더 다뤄 주세요.', '강사님 설명이 명확해서 이해가 잘 되었습니다. 감사합니다.', '교육장이 좁고 더웠습니다. 환경 개선이 필요합니다.',
+      '법령 개정 내용을 표로 정리해 주셔서 유용했습니다.', '온라인으로도 들을 수 있게 해 주세요. 지방에서 오기 힘듭니다.', '교재에 오타가 여러 곳 있었습니다. 검수를 부탁드립니다.',
+      '조별 토론이 좋았지만 시간이 부족했습니다.', '위험성평가 양식을 실제로 작성해 보는 시간이 가장 도움이 되었습니다.', '내용이 전반적으로 만족스럽습니다. 다음 과정도 참여하고 싶습니다.',
+      '심화 과정을 별도로 개설해 주시면 좋겠습니다.', '동영상 자료의 화질이 좋지 않았습니다.', '수료증을 현장에서 바로 받을 수 있으면 좋겠습니다.', '없음', '특별한 의견 없습니다.',
+      '교육 시간이 하루로는 부족합니다. 이틀 과정으로 늘려 주세요.', '질의응답 시간이 충분해서 좋았습니다.', '주차 공간이 부족해 불편했습니다.'];
+    const recipients = [], responses = [];
+    for (let i = 0; i < 100; i++) {
+      const name = pick(surnames) + pick(given), email = `test${String(i + 1).padStart(3, '0')}@example.com`, group = pick(groups);
+      const submitted = i < 85;                       // 85명 제출, 15명 미제출
+      const opened = submitted || i < 92;
+      const ts = Date.now() - Math.floor(Math.random() * 7 * 86400000);
+      recipients.push({ id: 'tt' + String(i + 1).padStart(3, '0'), data: { name, email, group, createdAt: firebase.firestore.Timestamp.fromMillis(ts - 3600000), sendStatus: 'sent', sentAt: firebase.firestore.Timestamp.fromMillis(ts - 3000000), sendCount: 1, openCount: opened ? 1 + Math.floor(Math.random() * 3) : 0, openedAt: opened ? firebase.firestore.Timestamp.fromMillis(ts - 1000000) : null, submittedAt: submitted ? firebase.firestore.Timestamp.fromMillis(ts) : null, sendError: null } });
+      if (submitted) {
+        const c = weighted([40, 35, 20, 5]);
+        const isOpen = i >= 70;                     // 70건 메일, 15건 공개 응답
+        responses.push({ token: isOpen ? null : 'tt' + String(i + 1).padStart(3, '0'), channel: isOpen ? 'open' : 'email', name, email: isOpen ? null : email, group,
+          answers: { tq1: c === 3 ? '기타: ' + pick(['화재 예방', '건설 안전', '보건 관리']) : def.questions[0].options[c],
+            tq2: 1 + weighted([3, 7, 20, 40, 30]), tq3: 1 + weighted([2, 5, 18, 40, 35]),
+            tq4: Math.random() < 0.1 ? null : def.questions[3].options.filter(() => Math.random() < 0.4).slice(0, 3),
+            tq5: def.questions[4].options[weighted([30, 25, 12, 15, 10, 8])],
+            tq6: Math.random() < 0.25 ? null : pick(shortPool), tq7: Math.random() < 0.3 ? null : pick(longPool) },
+          userAgent: 'TEST', submittedAt: firebase.firestore.Timestamp.fromMillis(ts) });
+      }
+    }
+    return { def, recipients, responses };
+  }
+  $('testMake').onclick = async () => {
+    if (!await Modal.confirm('모든 문항 유형과 주관식 2개가 들어 있는 TEST 설문을 만들고, 대상자 100명(제출 85명)과 임의 응답 85건을 넣습니다. 진행할까요?')) return;
+    $('testMake').disabled = true; $('testInfo').textContent = 'TEST 설문을 만드는 중…';
+    try {
+      const { def, recipients: rs, responses: rp } = makeTestSurvey();
+      const id = await store.create(def, 'test-' + Date.now().toString(36));
+      let batch = db.batch(), n = 0;
+      const flush = async () => { await batch.commit(); batch = db.batch(); n = 0; };
+      for (const r of rs) { batch.set(store.recipients(id).doc(r.id), r.data); if (++n >= 400) await flush(); }
+      for (const r of rp) { batch.set(store.responses(id).doc(), r); if (++n >= 400) await flush(); }
+      if (n) await flush();
+      await refreshSurveys(); await selectSurvey(id);
+      $('testInfo').textContent = `TEST 설문을 만들었습니다 (대상자 ${rs.length}명, 응답 ${rp.length}건). 통계 탭과 AI 기능을 확인해 보세요.`;
+    } catch (err) { $('testInfo').textContent = ''; await Modal.alert('TEST 설문 생성 실패: ' + err.message); }
+    $('testMake').disabled = false;
+  };
+  $('testWipe').onclick = async () => {
+    const tests = surveys.filter(x => x[TEST_FLAG]);
+    if (!tests.length) return Modal.alert('삭제할 TEST 설문이 없습니다.');
+    if (!await Modal.confirm(`TEST 설문 ${tests.length}건(${tests.map(x => x.title).join(', ')})과 그 대상자·응답을 모두 삭제합니다. 실제 설문은 건드리지 않습니다. 진행할까요?`)) return;
+    $('testWipe').disabled = true; $('testInfo').textContent = 'TEST 설문을 지우는 중…';
+    try {
+      for (const t of tests) await store.remove(t.id);
+      if (tests.some(t => t.id === SID)) SID = null;
+      await refreshSurveys();
+      if (SID) await selectSurvey(SID); else if (surveys.length) await selectSurvey(surveys[0].id); else location.reload();
+      $('testInfo').textContent = `TEST 설문 ${tests.length}건을 삭제했습니다.`;
+    } catch (err) { $('testInfo').textContent = ''; await Modal.alert('삭제 실패: ' + err.message); }
+    $('testWipe').disabled = false;
+  };
 
   /* ================= 주소록 ================= */
   const book = ContactStore.init(db);
