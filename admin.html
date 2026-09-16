@@ -1255,9 +1255,17 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   function renderResponses() {
     const list = filteredResponses();
     $('respBody').innerHTML = list.map(r => `<tr><td>${esc(fmt(r.submittedAt))}</td><td><span class="badge ${channelOf(r) === 'email' ? 'b-ok' : 'b-warn'}">${channelLabel(r)}</span></td><td>${esc(r.name || '(익명)')}</td><td>${esc(r.email || '')}</td><td>${esc(r.group || '')}</td>
-      <td><button class="btn sm sec" data-view="${r.id}">보기</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">응답이 없습니다.</td></tr>';
+      <td style="white-space:nowrap"><button class="btn sm sec" data-view="${r.id}">보기</button> <button class="btn sm danger" data-rdel="${r.id}">삭제</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">응답이 없습니다.</td></tr>';
   }
   $('respBody').addEventListener('click', async e => {
+    const d = e.target.closest('button[data-rdel]');
+    if (d) {   // 응답 한 건 삭제 (잘못 들어온 응답·중복 응답 정리용). 대상자의 제출 표시는 그대로 두고 응답 문서만 지움
+      const r = responses.find(x => x.id === d.dataset.rdel); if (!r) return;
+      if (!await Modal.confirm(`${r.name || '(익명)'} / ${fmt(r.submittedAt)} 응답 1건을 삭제할까요?\n되돌릴 수 없으며, 통계와 AI 요약·보고서는 다시 계산됩니다.`)) return;
+      try { await store.responses(SID).doc(r.id).delete(); Modal.toast('응답 1건을 삭제했습니다'); }
+      catch (err) { await Modal.alert('삭제 실패: ' + err.message); }
+      return;
+    }
     const b = e.target.closest('button[data-view]'); if (!b) return;
     const r = responses.find(x => x.id === b.dataset.view); if (!r) return;
     const lines = CUR.questions.map((q, i) => { const a = r.answers?.[q.id]; return `${i + 1}. ${q.title}\n   → ${Array.isArray(a) ? a.join(', ') : (a ?? '(무응답)')}`; });
