@@ -600,7 +600,7 @@
     const purpose = $('aiPurpose').value.trim(); if (!purpose) return Modal.alert('설문 목적을 적어 주세요.');
     $('aiDraftBtn').disabled = true;
     const st = await AiClient.status(); const want = +$('aiCount').value;
-    logClear('aiDraftLog'); log('aiDraftLog', `초안 요청: 문항 ${want}개 · 목적 "${purpose.slice(0, 30)}" · 모델 순서 ${chainText(st, 'flash')}`);
+    logClear('aiDraftLog'); log('aiDraftLog', `초안 요청: 문항 ${want}개 · 목적 "${purpose.slice(0, 30)}" · 모델 순서 ${chainText(st, 'lite')}`);
     const stop = timer($('aiDraftMsg'), '초안을 만드는 중');
     try {
       const { model: used, result, attempts } = await AiClient.run('draft', { purpose, audience: $('aiAudience').value.trim(), count: want, notes: $('aiNotes').value.trim() });
