@@ -1120,7 +1120,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
             tq4: Math.random() < 0.1 ? null : def.questions[3].options.filter(() => Math.random() < 0.4).slice(0, 3),
             tq5: def.questions[4].options[weighted([30, 25, 12, 15, 10, 8])],
             tq6: Math.random() < 0.25 ? null : pick(shortPool), tq7: Math.random() < 0.3 ? null : pick(longPool) },
-          userAgent: 'TEST', submittedAt: firebase.firestore.Timestamp.fromMillis(ts) });
+          userAgent: 'TEST', isTest: true, submittedAt: firebase.firestore.Timestamp.fromMillis(ts) });
       }
     }
     return { def, recipients, responses };
@@ -1138,7 +1138,13 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       if (n) await flush();
       await refreshSurveys(); await selectSurvey(id);
       $('testInfo').textContent = `TEST 설문을 만들었습니다 (대상자 ${rs.length}명, 응답 ${rp.length}건). 통계 탭과 AI 기능을 확인해 보세요.`;
-    } catch (err) { $('testInfo').textContent = ''; await Modal.alert('TEST 설문 생성 실패: ' + err.message); }
+    } catch (err) {
+      $('testInfo').textContent = '';
+      // 도중에 실패하면 반쯤 만들어진 TEST 설문을 지웁니다
+      try { const half = (await store.list(true)).filter(x => x[TEST_FLAG] && x.id.startsWith('test-')); for (const h of half) { const rc = await store.responses(h.id).limit(1).get(); if (rc.empty) await store.remove(h.id); } await refreshSurveys(); } catch (_) {}
+      const perm = /permission|insufficient/i.test(err.message);
+      await Modal.alert('TEST 설문 생성 실패: ' + err.message + (perm ? '\n\nFirestore 규칙이 과거 시각의 응답 저장을 막고 있습니다. Firebase 콘솔 > Firestore Database > 규칙에 새 firestore.rules 내용을 붙여 넣고 "게시"한 뒤 다시 시도하세요.' : ''));
+    }
     $('testMake').disabled = false;
   };
   $('testWipe').onclick = async () => {

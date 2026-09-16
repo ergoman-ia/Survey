@@ -131,7 +131,7 @@ const SurveyStore = {
     for (const sub of ['recipients', 'responses']) {
       const snap = await this.db.collection(sub).get();
       let batch = this.db.batch(), n = 0;
-      for (const d of snap.docs) { batch.set(this.doc(id).collection(sub).doc(d.id), d.data()); moved[sub]++; if (++n >= 400) { await batch.commit(); batch = this.db.batch(); n = 0; } }
+      for (const d of snap.docs) { batch.set(this.doc(id).collection(sub).doc(d.id), sub === 'responses' ? { ...d.data(), legacy: true } : d.data()); moved[sub]++; if (++n >= 400) { await batch.commit(); batch = this.db.batch(); n = 0; } }
       if (n) await batch.commit();
     }
     return { id, ...moved };
