@@ -180,6 +180,7 @@ const AiClient = {
   _status: null,
   configured() { return typeof MAIL_CONFIG !== 'undefined' && MAIL_CONFIG.appsScriptUrl && !MAIL_CONFIG.appsScriptUrl.includes('여기에') && MAIL_CONFIG.apiKey && !MAIL_CONFIG.apiKey.startsWith('여기에'); },
   async call(payload) {
+    this.lastAttempts = null;
     if (!this.configured()) throw new Error('firebase-config.js의 MAIL_CONFIG(발송 서버)가 설정되지 않았습니다.');
     const res = await fetch(MAIL_CONFIG.appsScriptUrl, { method: 'POST', body: JSON.stringify({ key: MAIL_CONFIG.apiKey, ...payload }), redirect: 'follow' });
     const text = await res.text();
