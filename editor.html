@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설문 편집</title>
+<style>
+  :root { --c: #1f5fbf; --bg: #f4f6fa; --line: #dde3ec; --text: #222; --muted: #667; --warn: #d98a00; --bad: #d33; --ok: #1a9c4b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; font-size: 14px; line-height: 1.5; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 16px 80px; }
+  header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  h1 { font-size: 20px; margin: 0; color: var(--c); }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--c); color: #fff; cursor: pointer; font: inherit; text-decoration: none; display: inline-block; }
+  .btn.sec { background: #fff; color: var(--c); border: 1px solid var(--c); }
+  .btn.danger { background: var(--bad); }
+  .btn.sm { padding: 4px 9px; font-size: 12px; }
+  .btn.icon { padding: 4px 8px; font-size: 13px; background: #fff; color: var(--muted); border: 1px solid var(--line); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  input[type=text], input[type=number], input[type=date], input[type=password], select, textarea { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
+  input[type=text], textarea { width: 100%; }
+  label.chk { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .q-card { border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: #fff; }
+  .q-card.draft { border-left-color: var(--warn); }
+  .q-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .q-head .num { font-weight: 700; color: var(--c); min-width: 26px; }
+  .q-head select { min-width: 170px; }
+  .q-body { display: grid; gap: 6px; }
+  .opt-row { display: flex; gap: 6px; align-items: center; }
+  .opt-row input { flex: 1; }
+  .q-foot { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-top: 8px; flex-wrap: wrap; }
+  .tools { display: flex; gap: 4px; }
+  .tag { display: inline-block; font-size: 11px; color: var(--warn); border: 1px solid #f3dca0; background: #fff8e6; border-radius: 999px; padding: 0 8px; }
+  .preview { position: sticky; top: 10px; max-height: calc(100vh - 20px); overflow: auto; }
+  .p-card { border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+  .p-title { font-weight: 600; margin: 0 0 8px; }
+  .req { color: #d33; margin-left: 4px; }
+  .p-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; }
+  .p-scale { display: flex; gap: 6px; }
+  .p-scale span { flex: 1; text-align: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 0; }
+  .p-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .stars { font-size: 26px; letter-spacing: 4px; color: #f5b301; }
+  .status { font-size: 12px; color: var(--muted); }
+  .status.ok { color: var(--ok); } .status.bad { color: var(--bad); }
+  .login { max-width: 380px; margin: 80px auto; }
+  .login input { width: 100%; margin-bottom: 10px; }
+  .hint { background: #fff8e6; border: 1px solid #f3dca0; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 10px; }
+  .addbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  #pdfLog { font-size: 12px; color: var(--muted); white-space: pre-wrap; max-height: 120px; overflow: auto; }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="loginView">
+  <div class="card login">
+    <h1 style="margin-bottom:12px">설문 편집 로그인</h1>
+    <input type="password" id="pw" placeholder="관리자 비밀번호" autofocus>
+    <button class="btn" style="width:100%" id="loginBtn">로그인</button>
+    <p class="muted" id="loginMsg"></p>
+    <p class="muted"><a href="index.html">설문 안내로 돌아가기</a></p>
+  </div>
+</div>
+
+<div class="wrap" id="editorView" style="display:none">
+  <header>
+    <h1>설문 편집</h1>
+    <div class="row">
+      <span class="status" id="status">불러오는 중…</span>
+      <select id="surveySel" title="편집할 설문 선택"></select>
+      <button class="btn sec" id="newBtn">새 설문</button>
+      <a class="btn sec" href="index.html">설문 안내</a>
+      <a class="btn sec" href="admin.html">관리자 모드</a>
+      <button class="btn" id="saveBtn">저장</button>
+    </div>
+  </header>
+
+  <div class="hint" id="noDbHint" style="display:none">Firebase가 아직 설정되지 않아 저장할 수 없습니다. 편집한 내용은 "survey-config.js 내려받기"로 파일을 만들어 저장소에 올려 주세요.</div>
+
+  <div class="layout">
+    <div>
+      <div class="card">
+        <h3 style="margin:0 0 8px">설문 기본 정보</h3>
+        <div class="q-body">
+          <input type="text" id="sTitle" placeholder="설문 제목">
+          <textarea id="sDesc" rows="2" placeholder="설문 설명 (첫 화면과 응답 화면 위에 표시)"></textarea>
+          <div class="row">
+            <label>마감일 <input type="date" id="sDeadline"></label>
+            <label class="chk"><input type="checkbox" id="sClose"> 마감일 이후 제출 막기</label>
+            <label class="chk"><input type="checkbox" id="sOpen"> 공개 응답 허용(메일 링크 없이도 응답)</label>
+          </div>
+          <div class="row">
+            <span class="muted">설문 ID: <code id="sId">(저장하면 만들어집니다)</code></span>
+            <span class="muted" id="sStatus"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h3 style="margin:0">문항</h3>
+          <span class="muted" id="qCount"></span>
+        </div>
+        <div id="qList"></div>
+        <div class="addbar">
+          <span class="muted" style="align-self:center">문항 추가:</span>
+          <button class="btn sm sec" data-add="single">객관식</button>
+          <button class="btn sm sec" data-add="multi">체크박스</button>
+          <button class="btn sm sec" data-add="dropdown">드롭다운</button>
+          <button class="btn sm sec" data-add="scale">선형 배율</button>
+          <button class="btn sm sec" data-add="rating">등급(별점)</button>
+          <button class="btn sm sec" data-add="short">단답형</button>
+          <button class="btn sm sec" data-add="long">장문형</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px">가져오기 · 내보내기</h3>
+        <div class="row">
+          <label class="btn sec">PDF 설문지 불러오기 <input type="file" id="pdfFile" accept="application/pdf" hidden></label>
+          <label class="btn sec">JSON 가져오기 <input type="file" id="jsonFile" accept=".json,application/json" hidden></label>
+          <button class="btn sec" id="exportJson">JSON 내려받기</button>
+          <button class="btn sec" id="exportJs">survey-config.js 내려받기</button>
+          <button class="btn sec" id="resetFile">기본 틀(survey-config.js)로 되돌리기</button>
+        </div>
+        <p class="muted" style="margin:8px 0 4px">PDF는 글자를 읽어 "1. 문항" 번호와 "① / 1) / 가." 같은 선택지 표시, "1 2 3 4 5" 척도 표시를 찾아 초안을 만듭니다. 스캔 이미지 PDF는 글자가 없어 읽을 수 없습니다. 가져온 문항은 노란 표시가 붙으니 내용을 확인한 뒤 저장하세요.</p>
+        <div id="pdfLog"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card preview">
+        <div class="row" style="justify-content:space-between">
+          <h3 style="margin:0">미리 보기</h3>
+          <a class="btn sm sec" id="openSurvey" href="survey.html" target="_blank">응답 화면 열기</a>
+        </div>
+        <p class="muted">저장한 뒤에 응답 화면과 관리 통계에 반영됩니다.</p>
+        <div id="preview"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="firebase-config.js"></script>
+<script src="survey-config.js"></script>
+<script src="survey-store.js"></script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  async function sha256(str) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+
+  /* ---------- 로그인 (admin.html과 같은 비밀번호·세션) ---------- */
+  async function tryLogin() {
+    const h = await sha256($('pw').value);
+    if (h === ADMIN_PASSWORD_HASH) { sessionStorage.setItem('surveyAdmin', h); start(); }
+    else $('loginMsg').textContent = '비밀번호가 올바르지 않습니다.';
+  }
+  $('loginBtn').onclick = tryLogin;
+  $('pw').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+
+  /* ---------- 상태 ---------- */
+  let db = null, store = null, model = null, dirty = false, currentId = null, surveys = [];
+  const TEMPLATE = normalizeSurvey(JSON.parse(JSON.stringify(SURVEY)));
+  const freshModel = () => { const m = JSON.parse(JSON.stringify(TEMPLATE)); m.title = ''; m.status = 'active'; return m; };
+  const setStatus = (t, cls) => { $('status').textContent = t; $('status').className = 'status ' + (cls || ''); };
+  const markDirty = () => { dirty = true; setStatus('저장되지 않은 변경 사항이 있습니다', 'bad'); };
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+  const newId = () => 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+
+  async function start() {
+    $('loginView').style.display = 'none'; $('editorView').style.display = '';
+    if (firebaseConfigured()) {
+      try { firebase.initializeApp(FIREBASE_CONFIG); db = firebase.firestore(); } catch (e) { console.warn(e); }
+    }
+    if (!db) { $('noDbHint').style.display = ''; model = freshModel(); renderAll(); return; }
+    store = SurveyStore.init(db);
+    const want = new URLSearchParams(location.search).get('s');
+    await refreshList();
+    if (want && want !== 'new') await openSurvey(want);
+    else if (want === 'new' || !surveys.length) startNew();
+    else await openSurvey(localStorage.getItem('adminSurvey') && surveys.some(x => x.id === localStorage.getItem('adminSurvey')) ? localStorage.getItem('adminSurvey') : surveys[0].id);
+  }
+  async function refreshList() {
+    surveys = await store.list(true);
+    $('surveySel').innerHTML = surveys.map(x => `<option value="${esc(x.id)}">${esc(x.title || '(제목 없음)')}${x.status === 'archived' ? ' [보관]' : ''}</option>`).join('') + '<option value="__new">+ 새 설문</option>';
+    $('surveySel').value = currentId || '__new';
+  }
+  async function openSurvey(id) {
+    if (dirty && !confirm('저장하지 않은 변경 사항이 있습니다. 버리고 다른 설문을 열까요?')) { $('surveySel').value = currentId || '__new'; return; }
+    const s = await store.get(id);
+    if (!s) { alert('설문을 찾을 수 없습니다.'); return startNew(); }
+    currentId = id; model = s; dirty = false;
+    try { localStorage.setItem('adminSurvey', id); } catch (_) {}
+    history.replaceState(null, '', 'editor.html?s=' + encodeURIComponent(id));
+    setStatus('불러왔습니다', 'ok'); $('surveySel').value = id; renderAll();
+  }
+  function startNew() {
+    if (dirty && !confirm('저장하지 않은 변경 사항이 있습니다. 버리고 새 설문을 시작할까요?')) { $('surveySel').value = currentId || '__new'; return; }
+    currentId = null; model = freshModel(); dirty = false;
+    history.replaceState(null, '', 'editor.html?s=new');
+    setStatus('새 설문입니다. 제목과 문항을 채우고 저장하세요', ''); $('surveySel').value = '__new'; renderAll();
+  }
+  $('surveySel').onchange = e => e.target.value === '__new' ? startNew() : openSurvey(e.target.value);
+  $('newBtn').onclick = startNew;
+
+  /* ---------- 기본 정보 ---------- */
+  function renderMeta() {
+    $('sTitle').value = model.title || ''; $('sDesc').value = model.description || '';
+    $('sDeadline').value = model.deadline || ''; $('sClose').checked = !!model.closeAfterDeadline;
+    $('sOpen').checked = model.openEnabled !== false;
+    $('sId').textContent = currentId || '(저장하면 만들어집니다)';
+    $('sStatus').textContent = currentId ? (model.status === 'archived' ? '상태: 보관됨(응답 받지 않음)' : '상태: 진행 중') : '';
+    $('openSurvey').href = currentId ? 'survey.html?s=' + encodeURIComponent(currentId) : 'survey.html';
+  }
+  $('sTitle').oninput = e => { model.title = e.target.value; markDirty(); renderPreview(); };
+  $('sDesc').oninput = e => { model.description = e.target.value; markDirty(); renderPreview(); };
+  $('sDeadline').onchange = e => { model.deadline = e.target.value; markDirty(); renderPreview(); };
+  $('sClose').onchange = e => { model.closeAfterDeadline = e.target.checked; markDirty(); };
+  $('sOpen').onchange = e => { model.openEnabled = e.target.checked; markDirty(); };
+
+  /* ---------- 문항 편집 ---------- */
+  function blankQuestion(type) {
+    const q = { id: newId(), type, title: '', description: '', required: false };
+    if (type === 'single' || type === 'multi' || type === 'dropdown') { q.options = ['옵션 1', '옵션 2']; q.allowOther = false; }
+    if (type === 'scale') { q.min = 1; q.max = 5; q.labels = ['', '']; }
+    if (type === 'rating') { q.max = 5; q.icon = 'star'; }
+    if (type === 'short' || type === 'long') q.placeholder = '';
+    return q;
+  }
+  function changeType(q, type) {
+    const keep = { id: q.id, title: q.title, description: q.description, required: q.required, draft: q.draft };
+    const n = blankQuestion(type);
+    if (n.options && Array.isArray(q.options) && q.options.length) { n.options = q.options.slice(); n.allowOther = !!q.allowOther; }
+    if (type === 'scale' && q.type === 'rating') n.max = q.max;
+    if (type === 'rating' && q.type === 'scale') n.max = Math.min(Math.max(q.max, 3), 10);
+    Object.assign(q, n, keep);
+    for (const k of Object.keys(q)) if (!(k in n) && !(k in keep)) delete q[k];
+  }
+
+  function renderQuestions() {
+    const list = $('qList');
+    list.innerHTML = model.questions.map((q, i) => {
+      let body = '';
+      if (q.options) {
+        body += `<div class="opts" data-i="${i}">` + q.options.map((o, j) =>
+          `<div class="opt-row"><span class="muted">${q.type === 'multi' ? '☐' : q.type === 'dropdown' ? (j + 1) + '.' : '○'}</span><input type="text" data-opt="${j}" value="${esc(o)}" placeholder="옵션 ${j + 1}"><button class="btn icon" data-delopt="${j}" title="옵션 삭제">✕</button></div>`).join('') + `</div>
+          <div class="row"><button class="btn sm sec" data-addopt>옵션 추가</button>${q.type !== 'dropdown' ? `<label class="chk"><input type="checkbox" data-other ${q.allowOther ? 'checked' : ''}> "기타" 직접 입력 칸 추가</label>` : ''}</div>`;
+      } else if (q.type === 'scale') {
+        body += `<div class="row"><label>최솟값 <select data-min>${[0, 1].map(v => `<option${v === q.min ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+          <label>최댓값 <select data-max>${[2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option${v === q.max ? ' selected' : ''}>${v}</option>`).join('')}</select></label></div>
+          <div class="row"><input type="text" data-label="0" value="${esc(q.labels[0])}" placeholder="${q.min}점 설명 (예: 매우 불만족)" style="width:48%"><input type="text" data-label="1" value="${esc(q.labels[1])}" placeholder="${q.max}점 설명 (예: 매우 만족)" style="width:48%"></div>`;
+      } else if (q.type === 'rating') {
+        body += `<div class="row"><label>단계 <select data-max>${[3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option${v === q.max ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+          <label>모양 <select data-icon>${[['star', '별 ★'], ['heart', '하트 ♥'], ['number', '숫자']].map(([v, n]) => `<option value="${v}"${v === q.icon ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div>`;
+      } else {
+        body += `<input type="text" data-ph value="${esc(q.placeholder || '')}" placeholder="입력 칸 안내 문구 (선택)">`;
+      }
+      return `<div class="q-card${q.draft ? ' draft' : ''}" data-i="${i}">
+        <div class="q-head"><span class="num">${i + 1}.</span>
+          <select data-type>${Object.entries(SURVEY_TYPES).map(([k, v]) => `<option value="${k}"${k === q.type ? ' selected' : ''}>${v.name}</option>`).join('')}</select>
+          ${q.draft ? '<span class="tag">PDF에서 가져옴 · 확인 필요</span>' : ''}
+        </div>
+        <div class="q-body">
+          <input type="text" data-title value="${esc(q.title)}" placeholder="질문">
+          <input type="text" data-desc value="${esc(q.description || '')}" placeholder="설명 (선택)">
+          ${body}
+        </div>
+        <div class="q-foot">
+          <label class="chk"><input type="checkbox" data-req ${q.required ? 'checked' : ''}> 필수</label>
+          <div class="tools">
+            <button class="btn icon" data-move="-1" title="위로">▲</button><button class="btn icon" data-move="1" title="아래로">▼</button>
+            <button class="btn icon" data-dup title="복제">복제</button><button class="btn icon" data-del title="삭제" style="color:#d33">삭제</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('') || '<p class="muted">문항이 없습니다. 아래에서 문항을 추가하세요.</p>';
+    $('qCount').textContent = `${model.questions.length}문항 (필수 ${model.questions.filter(q => q.required).length})`;
+  }
+
+  // 문항 카드 안의 모든 변경을 한곳에서 처리
+  $('qList').addEventListener('input', e => {
+    const card = e.target.closest('.q-card'); if (!card) return;
+    const q = model.questions[+card.dataset.i], t = e.target;
+    if (t.dataset.title !== undefined) q.title = t.value;
+    else if (t.dataset.desc !== undefined) q.description = t.value;
+    else if (t.dataset.opt !== undefined) q.options[+t.dataset.opt] = t.value;
+    else if (t.dataset.label !== undefined) q.labels[+t.dataset.label] = t.value;
+    else if (t.dataset.ph !== undefined) q.placeholder = t.value;
+    else return;
+    if (q.draft) { delete q.draft; card.classList.remove('draft'); card.querySelector('.tag')?.remove(); }
+    markDirty(); renderPreview();
+  });
+  $('qList').addEventListener('change', e => {
+    const card = e.target.closest('.q-card'); if (!card) return;
+    const i = +card.dataset.i, q = model.questions[i], t = e.target;
+    if (t.dataset.type !== undefined) { changeType(q, t.value); renderQuestions(); }
+    else if (t.dataset.req !== undefined) q.required = t.checked;
+    else if (t.dataset.other !== undefined) q.allowOther = t.checked;
+    else if (t.dataset.min !== undefined) q.min = +t.value;
+    else if (t.dataset.max !== undefined) q.max = +t.value;
+    else if (t.dataset.icon !== undefined) q.icon = t.value;
+    else return;
+    markDirty(); renderPreview();
+  });
+  $('qList').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const card = b.closest('.q-card'); if (!card) return;
+    const i = +card.dataset.i, q = model.questions[i];
+    if (b.dataset.addopt !== undefined) q.options.push('옵션 ' + (q.options.length + 1));
+    else if (b.dataset.delopt !== undefined) { if (q.options.length > 1) q.options.splice(+b.dataset.delopt, 1); }
+    else if (b.dataset.move !== undefined) { const j = i + (+b.dataset.move); if (j < 0 || j >= model.questions.length) return; [model.questions[i], model.questions[j]] = [model.questions[j], model.questions[i]]; }
+    else if (b.dataset.dup !== undefined) { const c = JSON.parse(JSON.stringify(q)); c.id = newId(); model.questions.splice(i + 1, 0, c); }
+    else if (b.dataset.del !== undefined) { if (!confirm(`${i + 1}번 문항을 삭제할까요?`)) return; model.questions.splice(i, 1); }
+    else return;
+    markDirty(); renderQuestions(); renderPreview();
+  });
+  document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { model.questions.push(blankQuestion(b.dataset.add)); markDirty(); renderQuestions(); renderPreview(); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); });
+
+  /* ---------- 미리 보기 ---------- */
+  function renderPreview() {
+    const s = model;
+    const meta = [s.deadline ? '응답 마감: ' + s.deadline : '', s.questions.length + '문항'].filter(Boolean).join(' · ');
+    $('preview').innerHTML = `<div class="p-card"><h2 style="margin:0 0 6px;color:var(--c);font-size:20px">${esc(s.title || '(제목 없음)')}</h2><p class="muted">${esc(s.description || '')}</p><p class="muted">${meta}</p></div>` +
+      s.questions.map((q, i) => {
+        let body = '';
+        if (q.type === 'single' || q.type === 'multi') {
+          body = q.options.map(o => `<div class="p-opt"><input type="${q.type === 'single' ? 'radio' : 'checkbox'}" disabled> ${esc(o)}</div>`).join('') + (q.allowOther ? `<div class="p-opt"><input type="${q.type === 'single' ? 'radio' : 'checkbox'}" disabled> 기타: <input type="text" disabled style="width:50%"></div>` : '');
+        } else if (q.type === 'dropdown') body = `<select disabled><option>선택하세요</option>${q.options.map(o => `<option>${esc(o)}</option>`).join('')}</select>`;
+        else if (q.type === 'scale') { let sp = ''; for (let v = q.min; v <= q.max; v++) sp += `<span>${v}</span>`; body = `<div class="p-scale">${sp}</div><div class="p-labels"><span>${esc(q.labels[0])}</span><span>${esc(q.labels[1])}</span></div>`; }
+        else if (q.type === 'rating') body = `<div class="stars">${(q.icon === 'heart' ? '♡' : q.icon === 'number' ? '' : '☆').repeat(q.icon === 'number' ? 0 : q.max)}${q.icon === 'number' ? Array.from({ length: q.max }, (_, k) => `<span style="font-size:15px;border:1px solid var(--line);border-radius:6px;padding:4px 10px;margin-right:4px;color:#444">${k + 1}</span>`).join('') : ''}</div>`;
+        else if (q.type === 'short') body = `<input type="text" disabled placeholder="${esc(q.placeholder || '단답형 답변')}">`;
+        else body = `<textarea disabled rows="3" placeholder="${esc(q.placeholder || '장문형 답변')}"></textarea>`;
+        return `<div class="p-card"><p class="p-title">${i + 1}. ${esc(q.title || '(질문 없음)')}${q.required ? '<span class="req">*</span>' : ''}</p>${q.description ? `<p class="muted" style="margin:-4px 0 8px">${esc(q.description)}</p>` : ''}${body}</div>`;
+      }).join('');
+  }
+  function renderAll() { renderMeta(); renderQuestions(); renderPreview(); }
+
+  /* ---------- 저장 · 내보내기 · 가져오기 ---------- */
+  function validate() {
+    const errs = [];
+    if (!model.title.trim()) errs.push('설문 제목을 입력하세요.');
+    model.questions.forEach((q, i) => {
+      if (!q.title.trim()) errs.push(`${i + 1}번 문항의 질문이 비어 있습니다.`);
+      if (q.options && q.options.filter(o => o.trim()).length < 1) errs.push(`${i + 1}번 문항에 선택지가 없습니다.`);
+      if (q.type === 'scale' && q.min >= q.max) errs.push(`${i + 1}번 문항의 척도 범위가 잘못되었습니다.`);
+    });
+    return errs;
+  }
+  function cleanModel() {
+    const m = JSON.parse(JSON.stringify(model));
+    m.questions.forEach(q => { delete q.draft; if (q.options) q.options = q.options.map(o => o.trim()).filter(Boolean); q.title = q.title.trim(); if (!q.description) delete q.description; });
+    return m;
+  }
+  $('saveBtn').onclick = async () => {
+    const errs = validate(); if (errs.length) return alert(errs.join('\n'));
+    if (!db) return alert('Firebase가 설정되지 않아 저장할 수 없습니다. "survey-config.js 내려받기"로 파일을 만들어 저장소에 올려 주세요.');
+    try {
+      if (currentId) await store.save(currentId, cleanModel());
+      else { currentId = await store.create(cleanModel()); try { localStorage.setItem('adminSurvey', currentId); } catch (_) {} history.replaceState(null, '', 'editor.html?s=' + encodeURIComponent(currentId)); }
+      dirty = false; await refreshList(); renderMeta();
+      setStatus('저장되었습니다 (' + new Date().toLocaleTimeString('ko-KR', { hour12: false }) + ')', 'ok');
+    } catch (err) { alert('저장 실패: ' + err.message); }
+  };
+  const download = (name, text, type) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + text], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href); };
+  $('exportJson').onclick = () => download('survey.json', JSON.stringify(cleanModel(), null, 2), 'application/json');
+  $('exportJs').onclick = () => download('survey-config.js', '/* 설문 편집기에서 내보낸 설문 정의 ' + new Date().toLocaleString('ko-KR') + ' */\nconst SURVEY = ' + JSON.stringify(cleanModel(), null, 2) + ';\n', 'application/javascript');
+  $('jsonFile').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { const obj = JSON.parse(await f.text()); if (!obj.questions) throw new Error('questions 항목이 없습니다.'); model = normalizeSurvey(obj); markDirty(); renderAll(); }
+    catch (err) { alert('JSON을 읽지 못했습니다: ' + err.message); }
+    e.target.value = '';
+  };
+  $('resetFile').onclick = () => { if (!confirm('편집 중인 문항을 버리고 survey-config.js의 기본 틀로 되돌릴까요? (저장을 눌러야 반영됩니다)')) return; const keepTitle = model.title; model = JSON.parse(JSON.stringify(TEMPLATE)); model.title = keepTitle || model.title; markDirty(); renderAll(); };
+
+  /* ---------- PDF 불러오기 ---------- */
+  const pdfLog = t => { $('pdfLog').textContent += t + '\n'; };
+  async function extractLines(file) {
+    if (!window.pdfjsLib) throw new Error('PDF 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const lines = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      const rows = new Map(); // y 좌표(반올림)별로 글자 조각 묶기
+      for (const it of tc.items) {
+        if (!it.str || !it.str.trim()) continue;
+        const y = Math.round(it.transform[5] / 3) * 3, x = it.transform[4];
+        if (!rows.has(y)) rows.set(y, []);
+        rows.get(y).push({ x, s: it.str, h: it.height || 0, w: it.width || 0 });
+      }
+      [...rows.entries()].sort((a, b) => b[0] - a[0]).forEach(([, parts]) => {
+        parts.sort((a, b) => a.x - b.x);
+        // 글자 조각 사이의 간격이 글자 크기의 1/4보다 크면 띄어쓰기, 글자 2개 이상 벌어지면 두 칸(척도 양 끝 설명 구분용)
+        let text = '', lastEnd = null;
+        parts.forEach(pt => {
+          const h = pt.h || 10, gap = lastEnd === null ? 0 : pt.x - lastEnd;
+          text += (lastEnd !== null ? (gap > h * 2 ? '  ' : gap > h * 0.12 ? ' ' : '') : '') + pt.s;
+          lastEnd = pt.x + (pt.w || pt.s.length * h * 0.5);
+        });
+        lines.push({ text: text.replace(/[ \t]{3,}/g, '  ').trim(), h: Math.max(...parts.map(pt => pt.h)), page: p });
+      });
+    }
+    return lines;
+  }
+  const RX_Q = /^(?:문\s*(\d{1,3})|Q\s*(\d{1,3})|(\d{1,3}))\s*[.)、:]\s*(.+)$/i;
+  const RX_OPT = /^(?:([①-⑳])|([⑴-⒇])|\(?(\d{1,2})\)|([a-hA-H])[.)]|([가나다라마바사아자차카타파하])[.)]|([○□◯▢◻▪•·\-–]))\s*(.+)$/;
+  const RX_SCALE_NUM = /^(?:[①-⑳]|\d)(?:\s+(?:[①-⑳]|\d)){2,9}$/;
+  const RX_SCALE_WORDS = /(매우\s*(그렇다|만족|불만족|그렇지\s*않다|아니다)|전혀|보통)/;
+  function splitInlineOptions(text) {
+    // "① 예 ② 아니오 ③ 모름" 처럼 한 줄에 여러 선택지가 있는 경우
+    const parts = text.split(/(?=[①-⑳])|(?=\s\(?\d\)\s)|(?=\s[가-하][.)]\s)/).map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 2 && parts.every(p => RX_OPT.test(p))) return parts.map(p => p.replace(RX_OPT, '$7').trim());
+    return null;
+  }
+  function pdfToQuestions(lines) {
+    const qs = []; let cur = null, title = '';
+    const big = lines.filter(l => l.page === 1).sort((a, b) => b.h - a.h)[0];
+    if (big) title = big.text;
+    const circled = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+    const numOf = s => circled.indexOf(s) >= 0 ? circled.indexOf(s) + 1 : parseInt(s, 10);
+    const finalize = q => {
+      if (q.scaleHint && q.options.length < 2) { q.type = 'scale'; q.min = q.scaleHint.min; q.max = q.scaleHint.max; q.labels = q.scaleHint.labels; delete q.options; }
+      else if (q.options.length >= 2) {
+        q.type = /모두|복수|여러\s*개/.test(q.title) ? 'multi' : 'single';
+        const etc = q.options.findIndex(o => /^기타/.test(o) && o.length <= 10);
+        if (etc >= 0) { q.allowOther = true; q.options.splice(etc, 1); }
+        if (q.options.length < 2) q.options.push('옵션');
+      } else { q.type = q.longHint ? 'long' : 'short'; delete q.options; q.placeholder = ''; }
+      delete q.scaleHint; delete q.longHint;
+    };
+    const flush = () => { if (cur) { finalize(cur); qs.push(cur); cur = null; } };
+    for (const l of lines) {
+      const t = l.text;
+      if (t === title) continue;
+      const mq = t.match(RX_Q);
+      if (mq) {
+        const n = parseInt(mq[1] || mq[2] || mq[3], 10), expectedQ = qs.length + (cur ? 1 : 0) + 1;
+        // "1) 예" 처럼 번호가 선택지 순번과 이어지면 문항이 아니라 선택지로 봅니다.
+        const looksOption = cur && !cur.scaleHint && n === cur.options.length + 1 && n !== expectedQ;
+        if (!looksOption) {
+          flush();
+          cur = { id: newId(), type: 'short', title: mq[4].trim(), required: false, options: [], draft: true };
+          const inl = splitInlineOptions(mq[4]);
+          if (inl) { cur.title = mq[4].split(/[①⑴]|\(1\)|\s1\)|가[.)]/)[0].trim(); cur.options = inl; }
+          continue;
+        }
+      }
+      if (!cur) continue;
+      if (RX_SCALE_NUM.test(t)) { const nums = t.split(/\s+/).map(numOf); cur.scaleHint = { min: Math.min(...nums), max: Math.max(...nums), labels: cur.scaleHint?.labels || ['', ''] }; continue; }
+      if (RX_SCALE_WORDS.test(t) && t.length < 60 && !RX_OPT.test(t)) { const w = t.split(/\s{2,}|\s+[-~…]\s+/); cur.scaleHint = cur.scaleHint || { min: 1, max: 5, labels: ['', ''] }; cur.scaleHint.labels = [w[0] || '', w[w.length - 1] || '']; continue; }
+      const inline = splitInlineOptions(t);
+      if (inline) { cur.options.push(...inline); continue; }
+      const mo = t.match(RX_OPT);
+      if (mo) { cur.options.push(mo[7].trim()); continue; }
+      if (/^[_＿\-–—]{3,}$/.test(t) || /^\(\s*\)$/.test(t)) { cur.longHint = true; continue; }
+      if (t.length < 80 && cur.options.length === 0 && !cur.scaleHint) cur.title += ' ' + t; // 질문이 두 줄로 나뉜 경우
+    }
+    flush();
+    return { title, questions: qs };
+  }
+  $('pdfFile').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    $('pdfLog').textContent = '';
+    try {
+      pdfLog(`"${f.name}" 읽는 중…`);
+      const lines = await extractLines(f);
+      pdfLog(`글자 줄 ${lines.length}개를 읽었습니다.`);
+      if (!lines.length) throw new Error('글자를 찾지 못했습니다. 스캔 이미지 PDF일 수 있습니다.');
+      const r = pdfToQuestions(lines);
+      if (!r.questions.length) throw new Error('"1. 질문" 형식의 번호 문항을 찾지 못했습니다. 문항 번호가 있는 설문지인지 확인하세요.');
+      const mode = model.questions.length ? confirm(`문항 ${r.questions.length}개를 찾았습니다.\n"확인"을 누르면 기존 문항 뒤에 추가하고, "취소"를 누르면 기존 문항을 모두 바꿉니다.`) : true;
+      if (!mode) model.questions = [];
+      if (!model.title.trim() && r.title) model.title = r.title;
+      model.questions.push(...r.questions);
+      pdfLog(`문항 ${r.questions.length}개를 추가했습니다: ` + r.questions.map(q => SURVEY_TYPES[q.type].name).join(', '));
+      pdfLog('노란 표시가 붙은 문항의 질문·선택지·유형을 확인한 뒤 저장하세요.');
+      markDirty(); renderAll();
+    } catch (err) { pdfLog('실패: ' + err.message); alert('PDF를 읽지 못했습니다: ' + err.message); }
+    e.target.value = '';
+  };
+
+  /* ---------- 시작 ---------- */
+  if (sessionStorage.getItem('surveyAdmin') === ADMIN_PASSWORD_HASH) start();
+})();
+</script>
+</body>
+</html>

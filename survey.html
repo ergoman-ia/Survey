@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설문조사</title>
+<style>
+  :root { --c: #1f5fbf; --bg: #f4f6fa; --line: #dde3ec; --text: #222; --muted: #667; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; line-height: 1.6; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 60px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 22px 22px; margin-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0 0 8px; color: var(--c); }
+  .desc { color: var(--muted); font-size: 14px; margin: 0; }
+  .meta { font-size: 13px; color: var(--muted); margin-top: 10px; }
+  .q-title { font-weight: 600; margin: 0 0 12px; font-size: 16px; }
+  .req { color: #d33; margin-left: 4px; }
+  label.opt { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+  label.opt:hover { background: #f7f9fd; }
+  label.opt input { width: 18px; height: 18px; accent-color: var(--c); }
+  .scale { display: flex; gap: 6px; justify-content: space-between; margin: 6px 0; }
+  .scale label { flex: 1; text-align: center; border: 1px solid var(--line); border-radius: 8px; padding: 10px 0; cursor: pointer; user-select: none; }
+  .scale input { display: none; }
+  .scale input:checked + span { display: block; background: var(--c); color: #fff; border-radius: 6px; }
+  .scale span { display: block; padding: 2px 0; }
+  .scale-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  textarea, input[type=text] { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: inherit; }
+  textarea { min-height: 90px; resize: vertical; }
+  .btn { display: inline-block; width: 100%; padding: 14px; border: 0; border-radius: 10px; background: var(--c); color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; }
+  .btn:disabled { background: #9ab; cursor: not-allowed; }
+  .msg { text-align: center; padding: 40px 16px; }
+  .msg h2 { color: var(--c); }
+  .error { color: #d33; font-size: 13px; margin-top: 6px; display: none; }
+  .card.invalid { border-color: #d33; }
+  .card.invalid .error { display: block; }
+  .other-input { margin-top: 4px; }
+  select { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: inherit; background: #fff; }
+  .rating { display: flex; gap: 4px; flex-wrap: wrap; }
+  .rating label { cursor: pointer; font-size: 30px; color: #ccc; user-select: none; }
+  .rating input { display: none; }
+  .rating label.on { color: #f5b301; }
+  .rating label.num { font-size: 15px; color: #444; border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; }
+  .rating label.num.on { background: var(--c); color: #fff; border-color: var(--c); }
+  .rating-val { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .q-desc { color: var(--muted); font-size: 13px; margin: -8px 0 10px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="msg" id="loading">설문을 불러오는 중입니다…</div>
+</div>
+
+<!-- Firebase (compat 버전: script 태그만으로 사용 가능) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="survey-store.js"></script>
+<script>
+(function () {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const db = firebase.firestore();
+  const FieldValue = firebase.firestore.FieldValue;
+
+  const app = document.getElementById('app');
+  const params = new URLSearchParams(location.search);
+  const token = params.get('t');
+  let surveyId = params.get('s');
+  let SURVEY = null;            // 선택된 설문 정의 (SurveyStore에서 읽음)
+  const store = SurveyStore.init(db);
+  let recipient = null;
+  // 공개 응답 중복 방지용 브라우저 기억 키 (설문 구분값별로 구분, 설문 정의를 읽은 뒤 확정)
+  let OPEN_DONE_KEY = '';
+
+  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  function showMessage(title, body) {
+    app.innerHTML = `<div class="card msg"><h2>${esc(title)}</h2><p>${esc(body)}</p></div>`;
+  }
+
+  function isClosed() {
+    if (!SURVEY.closeAfterDeadline || !SURVEY.deadline) return false;
+    const end = new Date(SURVEY.deadline + 'T23:59:59');
+    return new Date() > end;
+  }
+
+  /* ---------- 문항 그리기 ---------- */
+  function renderQuestion(q, idx) {
+    let body = '';
+    const req = q.required ? '<span class="req">*</span>' : '';
+    const hasOther = q.allowOther || (q.options || []).includes('기타');
+    if (q.type === 'single' || q.type === 'multi') {
+      const t = q.type === 'single' ? 'radio' : 'checkbox';
+      const opts = q.allowOther && !q.options.includes('기타') ? q.options.concat(['기타']) : q.options;
+      body = opts.map(o =>
+        `<label class="opt"><input type="${t}" name="${q.id}" value="${esc(o)}"><span>${esc(o)}</span></label>`).join('');
+      if (hasOther) body += `<input type="text" class="other-input" name="${q.id}__other" placeholder="기타 내용을 입력해 주세요.">`;
+    } else if (q.type === 'dropdown') {
+      body = `<select name="${q.id}"><option value="">선택하세요</option>${q.options.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select>`;
+    } else if (q.type === 'scale') {
+      const min = q.min ?? 1, max = q.max ?? 5;
+      let items = '';
+      for (let v = min; v <= max; v++) items += `<label><input type="radio" name="${q.id}" value="${v}"><span>${v}</span></label>`;
+      body = `<div class="scale">${items}</div>`;
+      if (q.labels && (q.labels[0] || q.labels[1])) body += `<div class="scale-labels"><span>${esc(q.labels[0])}</span><span>${esc(q.labels[1])}</span></div>`;
+    } else if (q.type === 'rating') {
+      const max = q.max ?? 5, icon = q.icon || 'star';
+      let items = '';
+      for (let v = 1; v <= max; v++) items += `<label class="${icon === 'number' ? 'num' : ''}" data-v="${v}"><input type="radio" name="${q.id}" value="${v}">${icon === 'heart' ? '♥' : icon === 'number' ? v : '★'}</label>`;
+      body = `<div class="rating" data-max="${max}">${items}</div><div class="rating-val" data-for="${q.id}">선택 안 함</div>`;
+    } else if (q.type === 'short') {
+      body = `<input type="text" name="${q.id}" placeholder="${esc(q.placeholder || '')}" maxlength="200">`;
+    } else {
+      body = `<textarea name="${q.id}" placeholder="${esc(q.placeholder || '')}"></textarea>`;
+    }
+    return `<div class="card q" data-id="${q.id}">
+      <p class="q-title">${idx + 1}. ${esc(q.title)}${req}</p>
+      ${q.description ? `<p class="q-desc">${esc(q.description)}</p>` : ''}
+      ${body}
+      <div class="error">필수 문항입니다. 답변을 입력해 주세요.</div>
+    </div>`;
+  }
+
+  // 별점: 선택한 단계까지 색을 칠하고 값을 표시
+  function bindRating(root) {
+    root.querySelectorAll('.rating').forEach(box => {
+      const labels = [...box.querySelectorAll('label')];
+      const paint = v => labels.forEach(l => l.classList.toggle('on', +l.dataset.v <= v));
+      box.addEventListener('change', e => {
+        const v = +e.target.value; paint(v);
+        const out = root.querySelector(`.rating-val[data-for="${e.target.name}"]`);
+        if (out) out.textContent = `${v} / ${box.dataset.max}`;
+      });
+      box.addEventListener('mouseover', e => { const l = e.target.closest('label'); if (l) paint(+l.dataset.v); });
+      box.addEventListener('mouseleave', () => { const c = box.querySelector('input:checked'); paint(c ? +c.value : 0); });
+    });
+  }
+
+  // 공개 응답(메일 링크 없이 접속)일 때 응답자 정보를 입력받는 카드
+  function renderIdentity() {
+    return `<div class="card q" data-id="__identity">
+      <p class="q-title">응답자 정보<span class="req">*</span></p>
+      <input type="text" name="__name" placeholder="이름" style="margin-bottom:8px" autocomplete="name">
+      <input type="text" name="__group" placeholder="소속 (선택)" autocomplete="organization">
+      <div class="error">이름을 입력해 주세요.</div>
+    </div>`;
+  }
+
+  function renderSurvey() {
+    const who = recipient ? `<div class="meta">응답자: ${esc(recipient.name)} (${esc(recipient.email)})</div>` : '';
+    const dl = SURVEY.deadline ? `<div class="meta">응답 마감: ${esc(SURVEY.deadline)}</div>` : '';
+    app.innerHTML = `
+      <div class="card">
+        <h1>${esc(SURVEY.title)}</h1>
+        <p class="desc">${esc(SURVEY.description)}</p>
+        ${who}${dl}
+      </div>
+      <form id="f">
+        ${recipient ? '' : renderIdentity()}
+        ${SURVEY.questions.map(renderQuestion).join('')}
+        <button class="btn" type="submit" id="submitBtn">제출하기</button>
+      </form>`;
+    document.getElementById('f').addEventListener('submit', onSubmit);
+    bindRating(document.getElementById('f'));
+  }
+
+  /* ---------- 답변 수집 ---------- */
+  function collect() {
+    const answers = {};
+    let valid = true;
+    for (const q of SURVEY.questions) {
+      const card = document.querySelector(`.q[data-id="${q.id}"]`);
+      card.classList.remove('invalid');
+      let val;
+      const otherEl = document.querySelector(`input[name="${q.id}__other"]`);
+      const otherText = otherEl && otherEl.value.trim();
+      if (q.type === 'single' || q.type === 'scale' || q.type === 'rating') {
+        const el = document.querySelector(`input[name="${q.id}"]:checked`);
+        val = el ? ((q.type === 'scale' || q.type === 'rating') ? Number(el.value) : el.value) : null;
+        if (val === '기타' && otherText) val = '기타: ' + otherText;
+      } else if (q.type === 'multi') {
+        val = [...document.querySelectorAll(`input[name="${q.id}"]:checked`)].map(e => e.value);
+        if (val.includes('기타') && otherText) val = val.map(v => v === '기타' ? '기타: ' + otherText : v);
+        if (!val.length) val = null;
+      } else if (q.type === 'dropdown') {
+        val = document.querySelector(`select[name="${q.id}"]`).value || null;
+      } else if (q.type === 'short') {
+        val = document.querySelector(`input[name="${q.id}"]`).value.trim() || null;
+      } else {
+        val = document.querySelector(`textarea[name="${q.id}"]`).value.trim() || null;
+      }
+      if (q.required && val === null) { valid = false; card.classList.add('invalid'); }
+      answers[q.id] = val;
+    }
+    return { answers, valid };
+  }
+
+  /* ---------- 제출 ---------- */
+  async function onSubmit(e) {
+    e.preventDefault();
+    const { answers, valid } = collect();
+    if (!valid) {
+      document.querySelector('.q.invalid').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    // 공개 응답: 이름 확인
+    let openName = null, openGroup = null;
+    if (!recipient) {
+      const card = document.querySelector('.q[data-id="__identity"]');
+      openName = document.querySelector('input[name="__name"]').value.trim();
+      openGroup = document.querySelector('input[name="__group"]').value.trim() || null;
+      card.classList.toggle('invalid', !openName);
+      if (!openName) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    }
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = '제출 중…';
+    try {
+      // 제출 직전에 다시 한번 중복 제출 여부 확인
+      if (token) {
+        const snap = await store.recipients(surveyId).doc(token).get();
+        if (snap.exists && snap.data().submittedAt) {
+          showMessage('이미 제출된 설문입니다', '이 링크로는 한 번만 응답할 수 있습니다. 참여해 주셔서 감사합니다.');
+          return;
+        }
+      }
+      const doc = {
+        surveyId,
+        channel: recipient ? 'email' : 'open',       // email: 메일 링크 응답, open: 공개 링크 응답
+        token: token || null,
+        name: recipient ? recipient.name : openName,
+        email: recipient ? recipient.email : null,
+        group: recipient ? (recipient.group || null) : openGroup,
+        answers,
+        userAgent: navigator.userAgent,
+        submittedAt: FieldValue.serverTimestamp()
+      };
+      const ref = await store.responses(surveyId).add(doc);
+      if (token) {
+        await store.recipients(surveyId).doc(token).update({
+          submittedAt: FieldValue.serverTimestamp(),
+          responseId: ref.id
+        });
+      } else {
+        try { localStorage.setItem(OPEN_DONE_KEY, ref.id); } catch (_) {}
+      }
+      showMessage('제출이 완료되었습니다', '소중한 의견 감사합니다. 창을 닫으셔도 됩니다.');
+    } catch (err) {
+      console.error(err);
+      alert('제출 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\n' + err.message);
+      btn.disabled = false; btn.textContent = '제출하기';
+    }
+  }
+
+  /* ---------- 시작: 토큰 확인 + 열람 기록 ---------- */
+  // 설문ID가 없을 때: 진행 중 설문이 하나면 그 설문, 여러 개면 목록을 보여 줍니다.
+  function showSurveyList(list) {
+    document.title = '설문 선택';
+    app.innerHTML = `<div class="card"><h1>참여할 설문을 선택하세요</h1></div>` + list.map(sv =>
+      `<a class="card" style="display:block;text-decoration:none;color:inherit" href="survey.html?s=${encodeURIComponent(sv.id)}">
+        <p class="q-title" style="margin:0">${esc(sv.title)}</p><p class="desc">${esc(sv.description || '')}</p>
+        ${sv.deadline ? `<div class="meta">응답 마감: ${esc(sv.deadline)}</div>` : ''}</a>`).join('');
+  }
+
+  async function init() {
+    try {
+      if (surveyId) {
+        SURVEY = await store.get(surveyId);
+        if (!SURVEY) { showMessage('설문을 찾을 수 없습니다', '링크의 설문이 삭제되었거나 주소가 잘못되었습니다. 담당자에게 문의해 주세요.'); return; }
+      } else {
+        const open = await store.listOpen();
+        if (open.length === 0) { showMessage('진행 중인 설문이 없습니다', '이메일로 받으신 설문 링크를 통해 접속해 주세요.'); return; }
+        if (open.length > 1) { showSurveyList(open); return; }
+        SURVEY = open[0]; surveyId = SURVEY.id;
+      }
+    } catch (err) {
+      console.error(err);
+      showMessage('오류가 발생했습니다', '설문을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요. (' + err.message + ')');
+      return;
+    }
+    if (SURVEY.status === 'archived') { showMessage('종료된 설문입니다', '이 설문은 더 이상 응답을 받지 않습니다.'); return; }
+    OPEN_DONE_KEY = 'survey_done_' + surveyId;
+    document.title = SURVEY.title;
+    if (isClosed()) { showMessage('설문이 마감되었습니다', '응답 기간이 종료되어 더 이상 제출할 수 없습니다.'); return; }
+    if (!token) {
+      // 공개 응답 모드
+      if (SURVEY.openEnabled === false) {
+        showMessage('올바르지 않은 접근입니다', '이메일로 받으신 설문 링크를 통해 접속해 주세요.');
+        return;
+      }
+      let done = null; try { done = localStorage.getItem(OPEN_DONE_KEY); } catch (_) {}
+      if (done) {
+        showMessage('이미 제출된 설문입니다', '이 기기에서는 한 번만 응답할 수 있습니다. 참여해 주셔서 감사합니다.');
+        return;
+      }
+      renderSurvey();
+      return;
+    }
+    try {
+      const ref = store.recipients(surveyId).doc(token);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        showMessage('유효하지 않은 링크입니다', '설문 링크가 잘못되었거나 삭제되었습니다. 담당자에게 문의해 주세요.');
+        return;
+      }
+      recipient = snap.data();
+      if (recipient.submittedAt) {
+        showMessage('이미 제출된 설문입니다', '이 링크로는 한 번만 응답할 수 있습니다. 참여해 주셔서 감사합니다.');
+        return;
+      }
+      // 열람 기록 (최초 열람 시각은 유지, 열람 횟수만 증가)
+      const upd = { openCount: FieldValue.increment(1), lastOpenedAt: FieldValue.serverTimestamp() };
+      if (!recipient.openedAt) upd.openedAt = FieldValue.serverTimestamp();
+      ref.update(upd).catch(console.warn);
+      renderSurvey();
+    } catch (err) {
+      console.error(err);
+      showMessage('오류가 발생했습니다', '설문을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요. (' + err.message + ')');
+    }
+  }
+  init();
+})();
+</script>
+</body>
+</html>

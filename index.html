@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설문조사 안내</title>
+<!--
+  설문 안내 페이지(저장소 첫 화면)입니다.
+  - Firestore의 surveys 컬렉션에서 진행 중인 설문 목록을 읽어 보여 줍니다(보관된 설문 제외).
+  - "설문 응답하기"를 누르면 survey.html로 이동해 응답할 수 있습니다(공개 응답, openEnabled가 true일 때).
+  - 메일 링크(?t=토큰)로 이 페이지에 들어오면 자동으로 survey.html로 넘깁니다.
+  - 오른쪽 위 "관리자 모드"로 admin.html에 들어갑니다.
+-->
+<style>
+  :root { --c: #1f5fbf; --bg: #f4f6fa; --line: #dde3ec; --text: #222; --muted: #667; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; line-height: 1.6; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .top a { color: var(--muted); font-size: 13px; text-decoration: none; border: 1px solid var(--line); background: #fff; padding: 6px 12px; border-radius: 8px; }
+  .top a:hover { color: var(--c); border-color: var(--c); }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 22px; margin-bottom: 16px; }
+  h1 { font-size: 24px; margin: 0 0 8px; color: var(--c); }
+  .desc { color: var(--muted); margin: 0 0 6px; }
+  .meta { font-size: 13px; color: var(--muted); }
+  .btn { display: inline-block; padding: 13px 22px; border-radius: 10px; background: var(--c); color: #fff; font-weight: 600; text-decoration: none; font-size: 16px; }
+  .btn.off { background: #9ab; pointer-events: none; }
+  .q { padding: 14px 0; border-top: 1px solid var(--line); }
+  .q:first-of-type { border-top: 0; padding-top: 0; }
+  .q-title { font-weight: 600; margin: 0 0 6px; }
+  .req { color: #d33; margin-left: 4px; }
+  .opts { margin: 0; padding-left: 20px; color: #444; font-size: 14px; }
+  .opts li { margin: 2px 0; }
+  .tag { display: inline-block; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-left: 6px; vertical-align: middle; }
+  .notice { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <span class="meta">설문조사 안내</span>
+    <span><a href="editor.html">설문 수정하기</a> <a href="admin.html">관리자 모드</a></span>
+  </div>
+  <div id="list"><div class="card"><p class="meta">설문을 불러오는 중입니다…</p></div></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="survey-store.js"></script>
+<script>
+(async function () {
+  // 메일 링크(?t=토큰)로 들어온 경우 바로 설문 화면으로
+  if (new URLSearchParams(location.search).get('t')) { location.replace('survey.html' + location.search); return; }
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const list = document.getElementById('list');
+  const typeName = { single: '객관식', multi: '체크박스', dropdown: '드롭다운', scale: '선형 배율', rating: '별점', short: '단답형', long: '장문형' };
+
+  function questionsHtml(sv) {
+    return sv.questions.map((q, i) => {
+      let body = '';
+      if (q.options) body = `<ul class="opts">${q.options.map(o => `<li>${esc(o)}</li>`).join('')}${q.allowOther ? '<li>기타 (직접 입력)</li>' : ''}</ul>`;
+      else if (q.type === 'scale') body = `<div class="opts" style="padding-left:0">${q.min ?? 1} ~ ${q.max ?? 5}점${q.labels && (q.labels[0] || q.labels[1]) ? ` (${esc(q.labels[0])} ~ ${esc(q.labels[1])})` : ''}</div>`;
+      else if (q.type === 'rating') body = `<div class="opts" style="padding-left:0;color:#f5b301;font-size:18px">${(q.icon === 'heart' ? '♥' : q.icon === 'number' ? '' : '★').repeat(q.icon === 'number' ? 0 : (q.max ?? 5))}${q.icon === 'number' ? `1 ~ ${q.max ?? 5}` : ''}</div>`;
+      else if (q.type === 'short') body = `<div class="opts" style="padding-left:0">짧은 글로 답변</div>`;
+      else body = `<div class="opts" style="padding-left:0">자유롭게 작성</div>`;
+      return `<div class="q"><p class="q-title">${i + 1}. ${esc(q.title)}${q.required ? '<span class="req">*</span>' : ''}<span class="tag">${typeName[q.type] || q.type}</span></p>${q.description ? `<p class="meta" style="margin:0 0 6px">${esc(q.description)}</p>` : ''}${body}</div>`;
+    }).join('');
+  }
+  function surveyCard(sv, single) {
+    const closed = sv.closeAfterDeadline && sv.deadline && new Date() > new Date(sv.deadline + 'T23:59:59');
+    const meta = [sv.deadline ? '응답 마감: ' + sv.deadline : '', '문항 수: ' + sv.questions.length + '개', sv.questions.some(q => q.required) ? '필수 문항 ' + sv.questions.filter(q => q.required).length + '개' : ''].filter(Boolean).join(' · ');
+    let btn, notice = '';
+    if (closed) btn = '<span class="btn off">설문이 마감되었습니다</span>';
+    else if (sv.openEnabled === false) { btn = '<span class="btn off">메일로 받은 링크에서만 응답할 수 있습니다</span>'; notice = '이 설문은 이메일로 발송된 개인 링크를 통해서만 응답할 수 있습니다.'; }
+    else { btn = `<a class="btn" href="survey.html?s=${encodeURIComponent(sv.id)}">설문 응답하기</a>`; notice = '메일로 개인 링크를 받으셨다면 그 링크로 응답해 주세요. 링크가 없는 분은 위 버튼을 눌러 이름과 소속을 적고 응답할 수 있습니다.'; }
+    return `<div class="card">
+      <h1>${esc(sv.title)}</h1>
+      <p class="desc">${esc(sv.description || '')}</p>
+      <div class="meta">${meta}</div>
+      <div style="margin-top:16px">${btn}</div>
+      <p class="notice">${notice}</p>
+    </div>
+    <div class="card">
+      ${single ? '<h3 style="margin:0 0 10px">설문 문항 미리 보기</h3>' + questionsHtml(sv)
+              : `<details><summary style="cursor:pointer;font-weight:600">설문 문항 미리 보기 (${sv.questions.length}문항)</summary><div style="margin-top:10px">${questionsHtml(sv)}</div></details>`}
+    </div>`;
+  }
+
+  try {
+    if (!firebaseConfigured() || !window.firebase) throw new Error('Firebase가 설정되지 않았습니다.');
+    firebase.initializeApp(FIREBASE_CONFIG);
+    const store = SurveyStore.init(firebase.firestore());
+    const only = new URLSearchParams(location.search).get('s');
+    let surveys = only ? [await store.get(only)].filter(Boolean) : await store.list(false);
+    if (!surveys.length) { list.innerHTML = '<div class="card"><h1>진행 중인 설문이 없습니다</h1><p class="meta">관리자 모드 또는 설문 수정하기에서 설문을 만들면 이곳에 표시됩니다.</p></div>'; return; }
+    document.title = surveys.length === 1 ? surveys[0].title + ' — 안내' : '설문조사 안내';
+    list.innerHTML = (surveys.length > 1 ? `<div class="card"><h1 style="font-size:20px">진행 중인 설문 ${surveys.length}건</h1><p class="meta">참여할 설문을 골라 "설문 응답하기"를 누르세요.</p></div>` : '') +
+      surveys.map(sv => surveyCard(sv, surveys.length === 1)).join('');
+  } catch (err) {
+    console.error(err);
+    list.innerHTML = `<div class="card"><h1>설문을 불러오지 못했습니다</h1><p class="meta">${esc(err.message)}</p></div>`;
+  }
+})();
+</script>
+</body>
+</html>
