@@ -299,6 +299,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="firebase-config.js"></script>
 <script src="survey-config.js"></script><!-- 새 설문의 기본 틀·예전 데이터 가져오기용 -->
+<script src="ui-modal.js"></script>
 <script src="survey-store.js"></script>
 <script>
 (function () {
@@ -340,9 +341,9 @@
   $('pw').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
   $('hashTool').onclick = async e => {
     e.preventDefault();
-    const pw = prompt('새 비밀번호를 입력하세요. (해시값만 표시되며 저장되지 않습니다)');
+    const pw = await Modal.prompt('새 비밀번호를 입력하세요. (해시값만 표시되며 저장되지 않습니다)');
     if (!pw) return;
-    prompt('아래 값을 firebase-config.js의 ADMIN_PASSWORD_HASH에 붙여 넣으세요.', await sha256(pw));
+    await Modal.prompt('아래 값을 firebase-config.js의 ADMIN_PASSWORD_HASH에 붙여 넣으세요.', await sha256(pw));
   };
   $('logoutBtn').onclick = () => { sessionStorage.removeItem('surveyAdmin'); location.reload(); };
 
@@ -377,7 +378,7 @@
   }
   async function selectSurvey(id) {
     const s = await store.get(id);
-    if (!s) { alert('설문을 찾을 수 없습니다.'); return; }
+    if (!s) { await Modal.alert('설문을 찾을 수 없습니다.'); return; }
     SID = id; CUR = s;
     try { localStorage.setItem('adminSurvey', id); } catch (_) {}
     history.replaceState(null, '', 'admin.html?s=' + encodeURIComponent(id));
@@ -403,28 +404,28 @@
   async function offerFirstSurvey() {
     let legacy = false;
     try { const c = await db.collection('config').doc('survey').get(); const r = await db.collection('recipients').limit(1).get(); legacy = c.exists || !r.empty; } catch (_) {}
-    if (legacy && confirm('예전 방식으로 저장된 설문·대상자·응답이 있습니다. 새 구조의 설문 한 건으로 가져올까요?')) {
+    if (legacy && await Modal.confirm('예전 방식으로 저장된 설문·대상자·응답이 있습니다. 새 구조의 설문 한 건으로 가져올까요?')) {
       if (await runMigration()) return;
     }
-    if (confirm('아직 설문이 없습니다. 설문 편집기에서 첫 설문을 만들까요?')) location.href = 'editor.html?s=new';
+    if (await Modal.confirm('아직 설문이 없습니다. 설문 편집기에서 첫 설문을 만들까요?')) location.href = 'editor.html?s=new';
   }
   // 예전 구조 → 새 구조 복사. 실패 원인(규칙 미게시 등)을 화면에 알립니다.
   async function runMigration() {
     $('conn').textContent = '예전 데이터 가져오는 중…';
     try {
       const r = await store.migrateLegacy();
-      alert(`가져왔습니다.\n설문 ID: ${r.id}\n대상자 ${r.recipients}명, 응답 ${r.responses}건`);
+      await Modal.alert(`가져왔습니다.\n설문 ID: ${r.id}\n대상자 ${r.recipients}명, 응답 ${r.responses}건`);
       await refreshSurveys(); await selectSurvey(r.id); return true;
     } catch (err) {
       console.error(err);
       const perm = /permission|insufficient/i.test(err.message);
-      alert('가져오기 실패: ' + err.message + (perm ? '\n\nFirestore 규칙이 아직 새 구조(surveys)를 허용하지 않습니다. Firebase 콘솔 > Firestore Database > 규칙에 새 firestore.rules를 붙여 넣고 "게시"한 뒤 다시 시도하세요.' : ''));
+      await Modal.alert('가져오기 실패: ' + err.message + (perm ? '\n\nFirestore 규칙이 아직 새 구조(surveys)를 허용하지 않습니다. Firebase 콘솔 > Firestore Database > 규칙에 새 firestore.rules를 붙여 넣고 "게시"한 뒤 다시 시도하세요.' : ''));
       $('conn').textContent = '가져오기 실패';
       return false;
     }
   }
   $('migrateBtn').onclick = async () => {
-    if (surveys.length && !confirm('이미 설문이 있습니다. 예전 데이터를 별도의 설문 한 건으로 추가로 가져올까요? (같은 데이터를 두 번 가져오면 중복됩니다)')) return;
+    if (surveys.length && !await Modal.confirm('이미 설문이 있습니다. 예전 데이터를 별도의 설문 한 건으로 추가로 가져올까요? (같은 데이터를 두 번 가져오면 중복됩니다)')) return;
     await runMigration();
   };
   $('surveySel').onchange = e => { if (e.target.value) selectSurvey(e.target.value); };
@@ -432,21 +433,21 @@
   $('svEdit').onclick = () => { if (SID) location.href = 'editor.html?s=' + encodeURIComponent(SID); };
   $('svDup').onclick = async () => {
     if (!SID) return;
-    const t = prompt('복제할 설문의 제목', CUR.title + ' (복사본)'); if (t === null) return;
+    const t = await Modal.prompt('복제할 설문의 제목', CUR.title + ' (복사본)'); if (t === null) return;
     const id = await store.duplicate(SID, t.trim() || undefined);
     await refreshSurveys(); await selectSurvey(id);
-    alert('문항만 복제했습니다. 대상자와 응답은 비어 있습니다.');
+    await Modal.alert('문항만 복제했습니다. 대상자와 응답은 비어 있습니다.');
   };
   $('svArchive').onclick = async () => {
     if (!SID) return;
     const toArchive = CUR.status !== 'archived';
-    if (!confirm(toArchive ? '이 설문을 보관할까요? 보관하면 더 이상 응답을 받지 않으며, 대상자·응답·통계는 그대로 볼 수 있습니다.' : '이 설문을 다시 진행 중으로 되돌릴까요?')) return;
+    if (!await Modal.confirm(toArchive ? '이 설문을 보관할까요? 보관하면 더 이상 응답을 받지 않으며, 대상자·응답·통계는 그대로 볼 수 있습니다.' : '이 설문을 다시 진행 중으로 되돌릴까요?')) return;
     await store.setStatus(SID, toArchive ? 'archived' : 'active');
     await refreshSurveys(); await selectSurvey(SID);
   };
   $('svDelete').onclick = async () => {
     if (!SID) return;
-    if (prompt(`"${CUR.title}" 설문과 대상자 ${recipients.length}명, 응답 ${responses.length}건이 모두 삭제되며 되돌릴 수 없습니다.\n삭제하려면 "삭제"라고 입력하세요.`) !== '삭제') return;
+    if (await Modal.prompt(`"${CUR.title}" 설문과 대상자 ${recipients.length}명, 응답 ${responses.length}건이 모두 삭제되며 되돌릴 수 없습니다.\n삭제하려면 "삭제"라고 입력하세요.`) !== '삭제') return;
     await store.remove(SID);
     SID = null; await refreshSurveys();
     if (surveys.length) await selectSurvey(surveys[0].id); else location.reload();
@@ -532,7 +533,7 @@
       await navigator.clipboard.writeText(surveyLink(r.id));
       b.textContent = '복사됨'; setTimeout(() => b.textContent = '링크 복사', 1200);
     } else if (b.dataset.act === 'del') {
-      if (confirm(`${r.name} (${r.email}) 을(를) 삭제할까요? 제출된 응답은 남습니다.`)) await store.recipients(SID).doc(r.id).delete();
+      if (await Modal.confirm(`${r.name} (${r.email}) 을(를) 삭제할까요? 제출된 응답은 남습니다.`)) await store.recipients(SID).doc(r.id).delete();
     } else if (b.dataset.act === 'send') {
       await sendMany([r]);
     }
@@ -564,12 +565,12 @@
       if (inBatch >= 400) { await batch.commit(); batch = db.batch(); inBatch = 0; } // Firestore 일괄 쓰기 한도(500) 대비
     }
     if (inBatch) await batch.commit();
-    alert(`추가 ${added}명 / 중복 ${dup}명 / 형식 오류 ${bad}명`);
+    await Modal.alert(`추가 ${added}명 / 중복 ${dup}명 / 형식 오류 ${bad}명`);
     return createdList;
   }
   $('addOne').onclick = async () => {
     await addRecipients([{ name: $('nName').value, email: $('nEmail').value, group: $('nGroup').value }]);
-    $('nName').value = $('nEmail').value = ''; $('nName').focus();
+    $('nName').value = $('nEmail').value = $('nGroup').value = ''; $('nName').focus();
   };
   /* ---- CSV 주소록 불러오기 ---- */
   function parseCSV(text) {
@@ -629,7 +630,7 @@
     $(ids.file).onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
       rows = parseCSV(decodeBuffer(await f.arrayBuffer()));
-      if (!rows.length) { alert('파일에서 읽을 내용이 없습니다.'); return; }
+      if (!rows.length) { await Modal.alert('파일에서 읽을 내용이 없습니다.'); return; }
       const g = guessColumns(rows), cols = Math.max(...rows.map(r => r.length));
       const opts = sel => Array.from({ length: cols }, (_, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${i + 1}열${g.isHeader && rows[0][i] ? ' (' + esc(rows[0][i]) + ')' : ''}</option>`).join('');
       $(ids.name).innerHTML = opts(g.name); $(ids.email).innerHTML = opts(g.email);
@@ -693,16 +694,16 @@
 
   let sending = false;
   async function sendMany(list) {
-    if (sending) { alert('이미 발송이 진행 중입니다.'); return; }
-    if (!list.length) { alert('발송할 대상이 없습니다.'); return; }
-    if (!mailConfigured()) { alert('firebase-config.js의 MAIL_CONFIG(appsScriptUrl, apiKey)를 먼저 설정하세요.'); return; }
-    if (!confirm(`${list.length}명에게 설문 메일을 보낼까요?`)) return;
+    if (sending) { await Modal.alert('이미 발송이 진행 중입니다.'); return; }
+    if (!list.length) { await Modal.alert('발송할 대상이 없습니다.'); return; }
+    if (!mailConfigured()) { await Modal.alert('firebase-config.js의 MAIL_CONFIG(appsScriptUrl, apiKey)를 먼저 설정하세요.'); return; }
+    if (!await Modal.confirm(`${list.length}명에게 설문 메일을 보낼까요?`)) return;
     sending = true;
     let ok = 0, fail = 0, remaining = null;
     const size = Math.min(Math.max(Number(MAIL_CONFIG.batchSize) || 30, 1), 100);
     const subject = fillCommon(MAIL_TEMPLATE.subject), body = fillCommon(MAIL_TEMPLATE.body), htmlBody = toHtml(body);
     log(`발송 시작: ${list.length}명 (${size}명씩 나누어 전송) / 설문 주소: ${BASE_URL}`);
-    if (!/^https:\/\/[a-z0-9-]+\.github\.io\//i.test(BASE_URL) && !confirm(`메일에 들어갈 설문 주소가 GitHub Pages 주소가 아닙니다.\n${BASE_URL}\n\n받는 사람이 이 주소를 열 수 없을 수 있습니다. 그래도 보낼까요?`)) { sending = false; log('발송 취소'); return; }
+    if (!/^https:\/\/[a-z0-9-]+\.github\.io\//i.test(BASE_URL) && !await Modal.confirm(`메일에 들어갈 설문 주소가 GitHub Pages 주소가 아닙니다.\n${BASE_URL}\n\n받는 사람이 이 주소를 열 수 없을 수 있습니다. 그래도 보낼까요?`)) { sending = false; log('발송 취소'); return; }
     for (let i = 0; i < list.length; i += size) {
       const chunk = list.slice(i, i + size);
       let results;
@@ -736,15 +737,15 @@
     }
     sending = false;
     log(`발송 종료: 성공 ${ok} / 실패 ${fail}` + (remaining !== null ? ` / 오늘 남은 발송 가능 인원 ${remaining}명` : ''));
-    alert(`발송 완료\n성공 ${ok}명 / 실패 ${fail}명` + (remaining !== null ? `\n오늘 남은 발송 가능 인원: ${remaining}명` : ''));
+    await Modal.alert(`발송 완료\n성공 ${ok}명 / 실패 ${fail}명` + (remaining !== null ? `\n오늘 남은 발송 가능 인원: ${remaining}명` : ''));
   }
   const selectedIds = () => [...document.querySelectorAll('.rchk:checked')].map(c => c.value);
   $('sendSelected').onclick = () => sendMany(recipients.filter(r => selectedIds().includes(r.id)));
   $('sendUnsent').onclick = () => sendMany(recipients.filter(r => r.sendStatus !== 'sent'));
   $('remindBtn').onclick = () => sendMany(recipients.filter(r => r.sendStatus === 'sent' && !r.submittedAt));
   $('delSelected').onclick = async () => {
-    const ids = selectedIds(); if (!ids.length) return alert('선택된 대상자가 없습니다.');
-    if (!confirm(`${ids.length}명을 삭제할까요?`)) return;
+    const ids = selectedIds(); if (!ids.length) return await Modal.alert('선택된 대상자가 없습니다.');
+    if (!await Modal.confirm(`${ids.length}명을 삭제할까요?`)) return;
     const batch = db.batch(); ids.forEach(id => batch.delete(store.recipients(SID).doc(id))); await batch.commit();
   };
   $('exportRecip').onclick = () => {
@@ -823,11 +824,11 @@
     $('respBody').innerHTML = list.map(r => `<tr><td>${esc(fmt(r.submittedAt))}</td><td><span class="badge ${channelOf(r) === 'email' ? 'b-ok' : 'b-warn'}">${channelLabel(r)}</span></td><td>${esc(r.name || '(익명)')}</td><td>${esc(r.email || '')}</td><td>${esc(r.group || '')}</td>
       <td><button class="btn sm sec" data-view="${r.id}">보기</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted">응답이 없습니다.</td></tr>';
   }
-  $('respBody').addEventListener('click', e => {
+  $('respBody').addEventListener('click', async e => {
     const b = e.target.closest('button[data-view]'); if (!b) return;
     const r = responses.find(x => x.id === b.dataset.view); if (!r) return;
     const lines = CUR.questions.map((q, i) => { const a = r.answers?.[q.id]; return `${i + 1}. ${q.title}\n   → ${Array.isArray(a) ? a.join(', ') : (a ?? '(무응답)')}`; });
-    alert(`${r.name || '(익명)'} / ${fmt(r.submittedAt)}\n\n${lines.join('\n\n')}`);
+    await Modal.alert(`${r.name || '(익명)'} / ${fmt(r.submittedAt)}\n\n${lines.join('\n\n')}`);
   });
   $('exportResp').onclick = () => {
     const head = ['제출 시각', '경로', '이름', '이메일', '소속', ...CUR.questions.map((q, i) => `${i + 1}. ${q.title}`)];
@@ -862,7 +863,7 @@
   async function saveBook(members, msg) {
     await book.setMembers(AB.id, members);
     await refreshLists(AB.id);
-    if (msg) alert(msg);
+    if (msg) await Modal.alert(msg);
   }
   function addToBook(items) {
     const before = AB.members.length;
@@ -874,21 +875,21 @@
   $('abSearch').oninput = renderBook;
   $('abChkAll').onchange = e => document.querySelectorAll('.abchk').forEach(c => c.checked = e.target.checked);
   $('abNew').onclick = async () => {
-    const name = prompt('새 주소록 이름 (예: 교수 명단, 안전보건 전문기관)'); if (!name || !name.trim()) return;
+    const name = await Modal.prompt('새 주소록 이름 (예: 교수 명단, 안전보건 전문기관)'); if (!name || !name.trim()) return;
     const id = await book.create(name, []); await refreshLists(id);
   };
   $('abRename').onclick = async () => {
-    if (!AB) return; const name = prompt('주소록 이름', AB.name); if (!name || !name.trim()) return;
+    if (!AB) return; const name = await Modal.prompt('주소록 이름', AB.name); if (!name || !name.trim()) return;
     await book.rename(AB.id, name); await refreshLists(AB.id);
   };
   $('abDelete').onclick = async () => {
-    if (!AB) return; if (!confirm(`주소록 "${AB.name}"(${AB.members.length}명)을 삭제할까요? 이미 설문에 추가된 대상자는 영향을 받지 않습니다.`)) return;
+    if (!AB) return; if (!await Modal.confirm(`주소록 "${AB.name}"(${AB.members.length}명)을 삭제할까요? 이미 설문에 추가된 대상자는 영향을 받지 않습니다.`)) return;
     await book.remove(AB.id); AB = null; await refreshLists();
   };
   $('abAddOne').onclick = async () => {
     if (!AB) return;
     await addToBook([{ name: $('abName').value, email: $('abEmail').value, group: $('abGroup').value }]);
-    $('abName').value = $('abEmail').value = ''; $('abName').focus();
+    $('abName').value = $('abEmail').value = $('abGroup').value = ''; $('abName').focus();
   };
   $('abAddBulk').onclick = async () => {
     if (!AB) return;
@@ -906,8 +907,8 @@
   });
   $('abDelSelected').onclick = async () => {
     if (!AB) return; const sel = new Set([...document.querySelectorAll('.abchk:checked')].map(c => c.value));
-    if (!sel.size) return alert('선택된 사람이 없습니다.');
-    if (!confirm(`${sel.size}명을 주소록에서 뺄까요?`)) return;
+    if (!sel.size) return await Modal.alert('선택된 사람이 없습니다.');
+    if (!await Modal.confirm(`${sel.size}명을 주소록에서 뺄까요?`)) return;
     await saveBook(AB.members.filter(m => !sel.has(m.email)));
   };
   $('abExport').onclick = () => {
@@ -916,9 +917,9 @@
   };
   // 주소록 → 현재 설문 대상자
   async function importList(id, sendAfter) {
-    if (!SID) return alert('먼저 설문을 선택하세요.');
-    const l = lists.find(x => x.id === id) || await book.get(id); if (!l) return alert('주소록을 선택하세요.');
-    if (!confirm(`주소록 "${l.name}" ${l.members.length}명을 현재 설문 "${CUR.title}"의 대상자로 추가할까요? (이미 등록된 이메일은 건너뜁니다)`)) return;
+    if (!SID) return await Modal.alert('먼저 설문을 선택하세요.');
+    const l = lists.find(x => x.id === id) || await book.get(id); if (!l) return await Modal.alert('주소록을 선택하세요.');
+    if (!await Modal.confirm(`주소록 "${l.name}" ${l.members.length}명을 현재 설문 "${CUR.title}"의 대상자로 추가할까요? (이미 등록된 이메일은 건너뜁니다)`)) return;
     const created = await addRecipients(l.members);
     if (sendAfter && created.length) await sendMany(created);
   }
@@ -926,10 +927,10 @@
   $('abImport').onclick = () => importList($('abPick').value, false);
   $('abImportSend').onclick = () => importList($('abPick').value, true);
   $('abSaveCurrent').onclick = async () => {
-    if (!recipients.length) return alert('현재 설문에 대상자가 없습니다.');
-    const name = prompt(`현재 대상자 ${recipients.length}명을 새 주소록으로 저장합니다. 주소록 이름:`, CUR.title + ' 대상자'); if (!name || !name.trim()) return;
+    if (!recipients.length) return await Modal.alert('현재 설문에 대상자가 없습니다.');
+    const name = await Modal.prompt(`현재 대상자 ${recipients.length}명을 새 주소록으로 저장합니다. 주소록 이름:`, CUR.title + ' 대상자'); if (!name || !name.trim()) return;
     const id = await book.create(name, recipients.map(r => ({ name: r.name, email: r.email, group: r.group || '' })));
-    await refreshLists(id); alert('주소록으로 저장했습니다. 주소록 탭에서 확인할 수 있습니다.');
+    await refreshLists(id); await Modal.alert('주소록으로 저장했습니다. 주소록 탭에서 확인할 수 있습니다.');
   };
 
   /* ================= 설정 확인 ================= */
@@ -959,7 +960,7 @@
   $('copyOpen').onclick = async () => { await navigator.clipboard.writeText($('openLink').value); $('copyOpen').textContent = '복사됨'; setTimeout(() => $('copyOpen').textContent = '링크 복사', 1200); };
   $('openOpen').onclick = e => { e.preventDefault(); window.open($('openLink').value, '_blank'); };
   $('checkServer').onclick = async () => {
-    if (!mailConfigured()) return alert('firebase-config.js의 MAIL_CONFIG를 먼저 설정하세요.');
+    if (!mailConfigured()) return await Modal.alert('firebase-config.js의 MAIL_CONFIG를 먼저 설정하세요.');
     $('quotaInfo').textContent = '확인 중…';
     try {
       const d = await callMailServer({ action: 'quota' });
@@ -968,8 +969,8 @@
   };
   $('testMail').onclick = async () => {
     const email = $('testEmail').value.trim();
-    if (!emailOk(email)) return alert('받을 이메일을 입력하세요.');
-    if (!mailConfigured()) return alert('firebase-config.js의 MAIL_CONFIG를 먼저 설정하세요.');
+    if (!emailOk(email)) return await Modal.alert('받을 이메일을 입력하세요.');
+    if (!mailConfigured()) return await Modal.alert('firebase-config.js의 MAIL_CONFIG를 먼저 설정하세요.');
     try {
       const body = fillCommon(MAIL_TEMPLATE.body);
       const d = await callMailServer({
@@ -977,8 +978,8 @@
         recipients: [{ id: 'test', name: '테스트', email, link: surveyLink('TEST_TOKEN') }]
       });
       const r = d.results[0];
-      alert(r.ok ? `테스트 메일을 보냈습니다. 받은 편지함을 확인하세요.\n오늘 남은 발송 가능 인원: ${d.remaining}명` : '발송 실패: ' + r.error);
-    } catch (err) { alert('발송 실패: ' + err.message); }
+      await Modal.alert(r.ok ? `테스트 메일을 보냈습니다. 받은 편지함을 확인하세요.\n오늘 남은 발송 가능 인원: ${d.remaining}명` : '발송 실패: ' + r.error);
+    } catch (err) { await Modal.alert('발송 실패: ' + err.message); }
   };
 
   /* ================= 시작 ================= */

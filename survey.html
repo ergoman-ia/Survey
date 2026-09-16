@@ -54,6 +54,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
+<script src="ui-modal.js"></script>
 <script src="survey-store.js"></script>
 <script>
 (function () {
@@ -245,7 +246,7 @@
       showMessage('제출이 완료되었습니다', '소중한 의견 감사합니다. 창을 닫으셔도 됩니다.');
     } catch (err) {
       console.error(err);
-      alert('제출 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\n' + err.message);
+      await Modal.alert('제출 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\n' + err.message);
       btn.disabled = false; btn.textContent = '제출하기';
     }
   }

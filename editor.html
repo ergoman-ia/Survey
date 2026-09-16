@@ -162,6 +162,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="firebase-config.js"></script>
 <script src="survey-config.js"></script>
+<script src="ui-modal.js"></script>
 <script src="survey-store.js"></script>
 <script>
 (function () {
@@ -206,16 +207,16 @@
     $('surveySel').value = currentId || '__new';
   }
   async function openSurvey(id) {
-    if (dirty && !confirm('저장하지 않은 변경 사항이 있습니다. 버리고 다른 설문을 열까요?')) { $('surveySel').value = currentId || '__new'; return; }
+    if (dirty && !await Modal.confirm('저장하지 않은 변경 사항이 있습니다. 버리고 다른 설문을 열까요?')) { $('surveySel').value = currentId || '__new'; return; }
     const s = await store.get(id);
-    if (!s) { alert('설문을 찾을 수 없습니다.'); return startNew(); }
+    if (!s) { await Modal.alert('설문을 찾을 수 없습니다.'); return startNew(); }
     currentId = id; model = s; dirty = false;
     try { localStorage.setItem('adminSurvey', id); } catch (_) {}
     history.replaceState(null, '', 'editor.html?s=' + encodeURIComponent(id));
     setStatus('불러왔습니다', 'ok'); $('surveySel').value = id; renderAll();
   }
-  function startNew() {
-    if (dirty && !confirm('저장하지 않은 변경 사항이 있습니다. 버리고 새 설문을 시작할까요?')) { $('surveySel').value = currentId || '__new'; return; }
+  async function startNew() {
+    if (dirty && !await Modal.confirm('저장하지 않은 변경 사항이 있습니다. 버리고 새 설문을 시작할까요?')) { $('surveySel').value = currentId || '__new'; return; }
     currentId = null; model = freshModel(); dirty = false;
     history.replaceState(null, '', 'editor.html?s=new');
     setStatus('새 설문입니다. 제목과 문항을 채우고 저장하세요', ''); $('surveySel').value = '__new'; renderAll();
@@ -322,7 +323,7 @@
     else return;
     markDirty(); renderPreview();
   });
-  $('qList').addEventListener('click', e => {
+  $('qList').addEventListener('click', async e => {
     const b = e.target.closest('button'); if (!b) return;
     const card = b.closest('.q-card'); if (!card) return;
     const i = +card.dataset.i, q = model.questions[i];
@@ -330,7 +331,7 @@
     else if (b.dataset.delopt !== undefined) { if (q.options.length > 1) q.options.splice(+b.dataset.delopt, 1); }
     else if (b.dataset.move !== undefined) { const j = i + (+b.dataset.move); if (j < 0 || j >= model.questions.length) return; [model.questions[i], model.questions[j]] = [model.questions[j], model.questions[i]]; }
     else if (b.dataset.dup !== undefined) { const c = JSON.parse(JSON.stringify(q)); c.id = newId(); model.questions.splice(i + 1, 0, c); }
-    else if (b.dataset.del !== undefined) { if (!confirm(`${i + 1}번 문항을 삭제할까요?`)) return; model.questions.splice(i, 1); }
+    else if (b.dataset.del !== undefined) { if (!await Modal.confirm(`${i + 1}번 문항을 삭제할까요?`)) return; model.questions.splice(i, 1); }
     else return;
     markDirty(); renderQuestions(); renderPreview();
   });
@@ -372,30 +373,30 @@
     return m;
   }
   $('saveBtn').onclick = async () => {
-    const errs = validate(); if (errs.length) return alert(errs.join('\n'));
-    if (!db) return alert('Firebase가 설정되지 않아 저장할 수 없습니다. firebase-config.js를 먼저 설정하세요.');
+    const errs = validate(); if (errs.length) return await Modal.alert(errs.join('\n'));
+    if (!db) return await Modal.alert('Firebase가 설정되지 않아 저장할 수 없습니다. firebase-config.js를 먼저 설정하세요.');
     try {
       if (currentId) await store.save(currentId, cleanModel());
       else { currentId = await store.create(cleanModel()); try { localStorage.setItem('adminSurvey', currentId); } catch (_) {} history.replaceState(null, '', 'editor.html?s=' + encodeURIComponent(currentId)); }
       dirty = false; await refreshList(); renderMeta();
       setStatus('저장되었습니다 (' + new Date().toLocaleTimeString('ko-KR', { hour12: false }) + ')', 'ok');
-    } catch (err) { alert('저장 실패: ' + err.message); }
+    } catch (err) { await Modal.alert('저장 실패: ' + err.message); }
   };
   const download = (name, text, type) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + text], { type })); a.download = name; a.click(); URL.revokeObjectURL(a.href); };
   $('exportJson').onclick = () => download((model.title || '설문').replace(/[\\/:*?"<>|]/g, '_') + '.json', JSON.stringify(cleanModel(), null, 2), 'application/json');
   $('saveBtn2').onclick = () => $('saveBtn').onclick();
   $('reloadBtn').onclick = async () => {
-    if (!currentId) return alert('아직 저장한 적이 없는 새 설문입니다.');
-    if (!confirm('저장하지 않은 변경 사항을 버리고 마지막으로 저장한 상태로 되돌릴까요?')) return;
+    if (!currentId) return await Modal.alert('아직 저장한 적이 없는 새 설문입니다.');
+    if (!await Modal.confirm('저장하지 않은 변경 사항을 버리고 마지막으로 저장한 상태로 되돌릴까요?')) return;
     dirty = false; await openSurvey(currentId);
   };
   $('jsonFile').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try { const obj = JSON.parse(await f.text()); if (!obj.questions) throw new Error('questions 항목이 없습니다.'); model = normalizeSurvey(obj); markDirty(); renderAll(); }
-    catch (err) { alert('JSON을 읽지 못했습니다: ' + err.message); }
+    catch (err) { await Modal.alert('JSON을 읽지 못했습니다: ' + err.message); }
     e.target.value = '';
   };
-  $('resetFile').onclick = () => { if (!confirm('편집 중인 문항을 모두 버리고 기본 설문으로 되돌릴까요? (저장하고 적용을 눌러야 반영됩니다)')) return; const keepTitle = model.title; model = JSON.parse(JSON.stringify(TEMPLATE)); model.title = keepTitle || model.title; markDirty(); renderAll(); };
+  $('resetFile').onclick = async () => { if (!await Modal.confirm('편집 중인 문항을 모두 버리고 기본 설문으로 되돌릴까요? (저장하고 적용을 눌러야 반영됩니다)')) return; const keepTitle = model.title; model = JSON.parse(JSON.stringify(TEMPLATE)); model.title = keepTitle || model.title; markDirty(); renderAll(); };
 
   /* ---------- PDF 불러오기 ---------- */
   const pdfLog = t => { $('pdfLog').textContent += t + '\n'; };
@@ -494,14 +495,14 @@
       if (!lines.length) throw new Error('글자를 찾지 못했습니다. 스캔 이미지 PDF일 수 있습니다.');
       const r = pdfToQuestions(lines);
       if (!r.questions.length) throw new Error('"1. 질문" 형식의 번호 문항을 찾지 못했습니다. 문항 번호가 있는 설문지인지 확인하세요.');
-      const mode = model.questions.length ? confirm(`문항 ${r.questions.length}개를 찾았습니다.\n"확인"을 누르면 기존 문항 뒤에 추가하고, "취소"를 누르면 기존 문항을 모두 바꿉니다.`) : true;
+      const mode = model.questions.length ? await Modal.confirm(`문항 ${r.questions.length}개를 찾았습니다.\n"확인"을 누르면 기존 문항 뒤에 추가하고, "취소"를 누르면 기존 문항을 모두 바꿉니다.`) : true;
       if (!mode) model.questions = [];
       if (!model.title.trim() && r.title) model.title = r.title;
       model.questions.push(...r.questions);
       pdfLog(`문항 ${r.questions.length}개를 추가했습니다: ` + r.questions.map(q => SURVEY_TYPES[q.type].name).join(', '));
       pdfLog('노란 표시가 붙은 문항의 질문·선택지·유형을 확인한 뒤 저장하세요.');
       markDirty(); renderAll();
-    } catch (err) { pdfLog('실패: ' + err.message); alert('PDF를 읽지 못했습니다: ' + err.message); }
+    } catch (err) { pdfLog('실패: ' + err.message); await Modal.alert('PDF를 읽지 못했습니다: ' + err.message); }
     e.target.value = '';
   };
 
