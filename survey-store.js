@@ -170,3 +170,28 @@ const ContactStore = {
   async setMembers(id, members) { await this.col().doc(id).set({ members: this.normalize(members), updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); },
   async remove(id) { await this.col().doc(id).delete(); }
 };
+
+/* =========================================================
+ * AI 호출 (Apps Script 발송 서버를 거쳐 Gemini 호출 — 키는 서버의 스크립트 속성에만 있음)
+ *   await AiClient.status()            → { enabled, models }  (설정 안 됐으면 enabled:false)
+ *   await AiClient.run('draft', {...}) → { model, result }   (실패하면 Error)
+ * ========================================================= */
+const AiClient = {
+  _status: null,
+  configured() { return typeof MAIL_CONFIG !== 'undefined' && MAIL_CONFIG.appsScriptUrl && !MAIL_CONFIG.appsScriptUrl.includes('여기에') && MAIL_CONFIG.apiKey && !MAIL_CONFIG.apiKey.startsWith('여기에'); },
+  async call(payload) {
+    if (!this.configured()) throw new Error('firebase-config.js의 MAIL_CONFIG(발송 서버)가 설정되지 않았습니다.');
+    const res = await fetch(MAIL_CONFIG.appsScriptUrl, { method: 'POST', body: JSON.stringify({ key: MAIL_CONFIG.apiKey, ...payload }), redirect: 'follow' });
+    const text = await res.text();
+    let data; try { data = JSON.parse(text); } catch { throw new Error('서버 응답을 해석할 수 없습니다. Apps Script 배포(모든 사용자, 새 버전)를 확인하세요.'); }
+    if (!data.ok) throw new Error(data.error || '서버 오류');
+    return data;
+  },
+  async status() {
+    if (this._status) return this._status;
+    try { const d = await this.call({ action: 'ai_status' }); this._status = { enabled: !!d.enabled, models: d.models || {} }; }
+    catch (err) { this._status = { enabled: false, error: err.message }; }
+    return this._status;
+  },
+  async run(task, payload) { const d = await this.call({ action: 'ai', task, payload }); return { model: d.model, result: d.result }; }
+};

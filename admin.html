@@ -198,11 +198,15 @@
           </select>
           <select id="groupFilter"><option value="">전체 소속</option></select>
           <button class="btn sec" id="exportResp">응답 원본 CSV</button>
+          <button class="btn" id="aiSummarize" title="주관식 응답을 Gemini가 주제별로 요약">AI 주관식 요약</button>
+          <button class="btn" id="aiReport" title="통계와 요약으로 결과 보고서 작성">AI 보고서 작성</button>
           <button class="btn sec" id="printBtn">인쇄 / PDF 저장</button>
         </div>
       </div>
     </div>
+    <p class="muted" id="aiInfo" style="margin:-4px 0 10px"></p>
     <div id="statsArea"></div>
+    <div id="reportArea"></div>
     <div class="card">
       <h3 style="margin-top:0">응답 목록</h3>
       <div class="tbl"><table><thead><tr><th>제출 시각</th><th>경로</th><th>이름</th><th>이메일</th><th>소속</th><th>작업</th></tr></thead><tbody id="respBody"></tbody></table></div>
@@ -388,7 +392,7 @@
     $('svArchive').textContent = CUR.status === 'archived' ? '복원' : '보관';
     unsubs.forEach(u => u()); unsubs = [];
     recipients = []; responses = [];
-    renderStats(); renderRecipients(); renderResponses(); renderCharts();
+    renderStats(); renderRecipients(); renderResponses(); renderCharts(); renderReport();
     unsubs.push(store.recipients(SID).orderBy('createdAt', 'desc').onSnapshot(snap => {
       recipients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       $('conn').textContent = '실시간 연결됨' + (CUR.status === 'archived' ? ' · 보관된 설문' : '');
@@ -457,7 +461,7 @@
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
     document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + b.dataset.tab));
-    if (b.dataset.tab === 'stats') renderCharts();
+    if (b.dataset.tab === 'stats') { renderCharts(); renderReport(); }
   });
 
   /* ================= 요약 숫자 ================= */
@@ -767,6 +771,92 @@
     return responses.filter(r => (!g || r.group === g) && (!c || channelOf(r) === c));
   };
 
+  /* ---- AI 요약·보고서 ---- */
+  const aiSum = qid => CUR.ai && CUR.ai.summary && CUR.ai.summary[qid];
+  function aiSummaryHtml(qid) {
+    const s = aiSum(qid); if (!s) return '';
+    const r = s.result, total = (r.sentiment ? (r.sentiment.positive || 0) + (r.sentiment.negative || 0) + (r.sentiment.neutral || 0) : 0);
+    return `<div class="hint" style="background:#f3f7ff;border-color:#cfdcf5">
+      <div class="row" style="justify-content:space-between"><b>AI 요약</b><span class="muted">${esc(s.model)} · ${esc(fmt(s.at))} · 응답 ${s.count}건 기준</span></div>
+      <p style="margin:6px 0">${esc(r.summary || '')}</p>
+      ${(r.themes || []).length ? `<table style="margin:6px 0"><tr><th>주제</th><th>응답 수</th><th>대표 의견</th></tr>${r.themes.map(t => `<tr><td>${esc(t.theme)}</td><td>${t.count}</td><td style="white-space:normal">${(t.quotes || []).map(q => '“' + esc(q) + '”').join('<br>')}</td></tr>`).join('')}</table>` : ''}
+      ${total ? `<div class="muted">긍정 ${r.sentiment.positive || 0} · 부정 ${r.sentiment.negative || 0} · 중립 ${r.sentiment.neutral || 0}</div>` : ''}
+      ${(r.suggestions || []).length ? `<div style="margin-top:4px"><b>개선 제안</b><ul style="margin:4px 0 0 18px;padding:0">${r.suggestions.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+    </div>`;
+  }
+  async function saveAi(patch) {
+    const ai = Object.assign({}, CUR.ai || {}, patch);
+    await store.doc(SID).set({ ai }, { merge: true }); CUR.ai = ai;
+  }
+  $('aiSummarize').onclick = async () => {
+    const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI가 설정되지 않았습니다. Apps Script 스크립트 속성에 GEMINI_API_KEY를 넣고 새 버전으로 배포하세요.' + (st.error ? '\n' + st.error : ''));
+    const list = filteredResponses();
+    const textQs = CUR.questions.filter(q => ['short', 'long', 'text'].includes(q.type));
+    if (!textQs.length) return Modal.alert('주관식 문항이 없습니다.');
+    if (!await Modal.confirm(`주관식 ${textQs.length}개 문항의 응답(${list.length}건 기준)을 AI로 요약할까요?\n이름·이메일은 보내지 않고 답변 내용만 보냅니다. 결과는 설문에 저장되어 다시 열어도 유지됩니다.`)) return;
+    $('aiSummarize').disabled = true; const summary = Object.assign({}, (CUR.ai || {}).summary || {}); let done = 0, lastModel = '';
+    for (const q of textQs) {
+      const answers = list.map(r => r.answers?.[q.id]).filter(a => typeof a === 'string' && a.trim());
+      $('aiInfo').textContent = `AI 요약 중… ${q.title} (${answers.length}건)`;
+      if (!answers.length) { delete summary[q.id]; continue; }
+      try {
+        const { model, result } = await AiClient.run('summarize', { title: CUR.title, question: q.title, answers: answers.slice(0, 500) });
+        summary[q.id] = { result, model, at: Date.now(), count: answers.length }; lastModel = model; done++;
+      } catch (err) { await Modal.alert(`"${q.title}" 요약 실패: ${err.message}`); }
+    }
+    try { await saveAi({ summary }); } catch (err) { await Modal.alert('요약 저장 실패: ' + err.message); }
+    $('aiInfo').textContent = done ? `AI 요약 ${done}개 문항 완료 (${lastModel})` : ''; $('aiSummarize').disabled = false; renderCharts();
+  };
+  // 통계 수치를 보고서용으로 정리
+  function statsForReport() {
+    const list = filteredResponses();
+    const out = { survey: { title: CUR.title, description: CUR.description || '', deadline: CUR.deadline || '' },
+      counts: { 대상자: recipients.length, 발송: recipients.filter(r => r.sendStatus === 'sent').length, 제출: recipients.filter(r => r.submittedAt).length, 응답합계: list.length, 메일응답: list.filter(r => channelOf(r) === 'email').length, 공개응답: list.filter(r => channelOf(r) === 'open').length },
+      questions: [] };
+    for (const q of CUR.questions) {
+      const item = { 번호: CUR.questions.indexOf(q) + 1, 질문: q.title, 유형: SURVEY_TYPES[q.type] ? SURVEY_TYPES[q.type].name : q.type };
+      if (['short', 'long', 'text'].includes(q.type)) { const s = aiSum(q.id); item.응답수 = list.filter(r => r.answers?.[q.id]).length; if (s) item.AI요약 = s.result; }
+      else if (q.type === 'scale' || q.type === 'rating') {
+        const vals = list.map(r => Number(r.answers?.[q.id])).filter(v => !isNaN(v) && v > 0);
+        const dist = {}; vals.forEach(v => dist[v] = (dist[v] || 0) + 1);
+        item.응답수 = vals.length; item.평균 = vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : null; item.최대점수 = q.max || 5; item.분포 = dist;
+      } else {
+        const dist = {}; list.forEach(r => { const a = r.answers?.[q.id]; if (a == null) return; (Array.isArray(a) ? a : [a]).forEach(v => { const k = String(v).startsWith('기타') ? '기타' : v; dist[k] = (dist[k] || 0) + 1; }); });
+        item.응답수 = list.filter(r => r.answers?.[q.id] != null && (!Array.isArray(r.answers[q.id]) || r.answers[q.id].length)).length; item.분포 = dist;
+      }
+      out.questions.push(item);
+    }
+    return out;
+  }
+  function renderReport() {
+    const rp = CUR.ai && CUR.ai.report; if (!rp) { $('reportArea').innerHTML = ''; return; }
+    const r = rp.result;
+    $('reportArea').innerHTML = `<div class="card" id="reportCard">
+      <div class="row" style="justify-content:space-between"><h3 style="margin:0">${esc(r.title || CUR.title + ' 결과 보고서')}</h3>
+        <div class="row" style="margin:0"><span class="muted">${esc(rp.model)} · ${esc(fmt(rp.at))}</span><button class="btn sec" id="reportPrint">보고서만 인쇄 / PDF 저장</button><button class="btn sec" id="reportCopy">본문 복사</button></div></div>
+      ${(r.sections || []).map(sec => `<h4 style="margin:14px 0 4px">${esc(sec.heading)}</h4><div style="white-space:pre-wrap">${esc(sec.body)}</div>`).join('')}
+    </div>`;
+    $('reportPrint').onclick = () => {
+      const w = window.open('', '_blank');
+      w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${esc(r.title || '결과 보고서')}</title><style>body{font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;max-width:800px;margin:40px auto;line-height:1.7;color:#222}h1{font-size:22px}h2{font-size:16px;margin:22px 0 6px;border-left:4px solid #1f5fbf;padding-left:8px}div{white-space:pre-wrap}p.meta{color:#667;font-size:12px}</style></head><body><h1>${esc(r.title || '')}</h1><p class="meta">${esc(CUR.title)} · 작성 ${esc(fmt(rp.at))} · AI(${esc(rp.model)}) 초안, 담당자 검토 필요</p>${(r.sections || []).map(sec => `<h2>${esc(sec.heading)}</h2><div>${esc(sec.body)}</div>`).join('')}</body></html>`);
+      w.document.close(); setTimeout(() => w.print(), 300);
+    };
+    $('reportCopy').onclick = async () => { await navigator.clipboard.writeText((r.title || '') + '\n\n' + (r.sections || []).map(sec => '■ ' + sec.heading + '\n' + sec.body).join('\n\n')); Modal.toast('보고서 본문을 복사했습니다'); };
+  }
+  $('aiReport').onclick = async () => {
+    const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI가 설정되지 않았습니다. Apps Script 스크립트 속성에 GEMINI_API_KEY를 넣고 새 버전으로 배포하세요.');
+    if (!responses.length) return Modal.alert('응답이 없어 보고서를 만들 수 없습니다.');
+    const hasText = CUR.questions.some(q => ['short', 'long', 'text'].includes(q.type)), hasSum = CUR.ai && CUR.ai.summary && Object.keys(CUR.ai.summary).length;
+    if (hasText && !hasSum && !await Modal.confirm('주관식 AI 요약이 아직 없습니다. 요약 없이 수치만으로 보고서를 만들까요? (취소 후 "AI 주관식 요약"을 먼저 실행하면 더 충실한 보고서가 됩니다)')) return;
+    $('aiReport').disabled = true; $('aiInfo').textContent = 'AI 보고서 작성 중… (20~60초)';
+    try {
+      const { model, result } = await AiClient.run('report', { data: statsForReport() });
+      await saveAi({ report: { result, model, at: Date.now() } });
+      $('aiInfo').textContent = `보고서 작성 완료 (${model})`; renderReport(); $('reportArea').scrollIntoView({ behavior: 'smooth' });
+    } catch (err) { $('aiInfo').textContent = ''; await Modal.alert('보고서 작성 실패: ' + err.message); }
+    $('aiReport').disabled = false;
+  };
+
   function renderCharts() {
     if (!document.getElementById('tab-stats').classList.contains('on')) return;
     const list = filteredResponses();
@@ -779,7 +869,7 @@
       let inner = '';
       if (q.type === 'short' || q.type === 'long' || q.type === 'text') {
         const items = list.map(r => r.answers?.[q.id]).filter(Boolean);
-        inner = items.length ? `<ul class="text-list">${items.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p class="muted">응답 없음</p>';
+        inner = aiSummaryHtml(q.id) + (items.length ? `<details${aiSum(q.id) ? '' : ' open'}><summary class="muted" style="cursor:pointer">응답 원문 ${items.length}건</summary><ul class="text-list">${items.map(t => `<li>${esc(t)}</li>`).join('')}</ul></details>` : '<p class="muted">응답 없음</p>');
       } else {
         inner = `<div class="chart-wrap"><canvas id="c_${q.id}"></canvas></div><div class="tbl"><table id="t_${q.id}"></table></div>`;
       }
