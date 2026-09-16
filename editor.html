@@ -47,6 +47,7 @@
   .p-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
   .stars { font-size: 26px; letter-spacing: 4px; color: #f5b301; }
   .status { font-size: 12px; color: var(--muted); }
+  .ai-log { margin: 8px 0 0; padding: 6px 10px; background: #1e1e1e; color: #ddd; border-radius: 8px; font: 12px/1.5 Consolas, monospace; white-space: pre-wrap; word-break: break-all; height: calc(3em + 12px); overflow-y: auto; }
   .status.ok { color: var(--ok); } .status.bad { color: var(--bad); }
   .login { max-width: 380px; margin: 80px auto; }
   .login input { width: 100%; margin-bottom: 10px; }
@@ -103,6 +104,7 @@
               <label class="chk"><input type="checkbox" id="aiReplace" checked> 기본 문항을 지우고 새로 만들기</label>
               <span class="muted" id="aiDraftMsg"></span>
             </div>
+            <pre class="ai-log" id="aiDraftLog" style="display:none"></pre>
           </div>
         </div>
       </div>
@@ -152,6 +154,7 @@
           <button class="btn sec" id="aiReviewBtn">AI 문항 검토</button>
           <span class="muted" id="aiReviewMsg"></span>
         </div>
+        <pre class="ai-log" id="aiReviewLog" style="display:none"></pre>
         <div id="aiReview" style="margin-top:8px"></div>
       </div>
 
@@ -411,6 +414,7 @@
   // AI 초안·검토 메시지와 결과, PDF 불러오기 로그를 모두 지움 (설문 전환·저장·되돌리기·불러오기 때)
   function clearAiPanels() {
     ['aiDraftMsg', 'aiReviewMsg', 'aiReview', 'pdfLog'].forEach(id => { const el = $(id); if (el) el.innerHTML = ''; });
+    ['aiDraftLog', 'aiReviewLog'].forEach(logClear);
     if (window.__pdfLogLines) window.__pdfLogLines = [];
   }
 
@@ -585,12 +589,23 @@
       .map(q => { q.id = newId(); q.draft = true; if (q.options) q.options = q.options.map(String); if (q.type === 'rating') q.max = Math.min(Math.max(q.max || 5, 3), 10); if (q.type === 'scale') { q.min = [0, 1].includes(q.min) ? q.min : 1; q.max = Math.min(Math.max(q.max || 5, 2), 10); q.labels = (q.labels || ['', '']).slice(0, 2); while (q.labels.length < 2) q.labels.push(''); } return q; });
   }
   const busy = (el, on, msg) => { el.textContent = msg || ''; };
+  // 진행 로그(두 줄 높이, 넘치면 스크롤) + 경과 시간 표시
+  const hhmmss = () => new Date().toLocaleTimeString('ko-KR', { hour12: false });
+  function log(id, msg) { const LOGS = window.__LOGS = window.__LOGS || {}; const L = LOGS[id] = LOGS[id] || []; L.push(`[${hhmmss()}] ${msg}`); const el = $(id); el.textContent = L.join('\n'); el.style.display = ''; el.scrollTop = el.scrollHeight; }
+  function logClear(id) { const LOGS = window.__LOGS = window.__LOGS || {}; LOGS[id] = []; const el = $(id); el.textContent = ''; el.style.display = 'none'; }
+  function timer(msgEl, label) { const t0 = Date.now(); const tick = () => { msgEl.textContent = `${label} · ${Math.round((Date.now() - t0) / 1000)}초 경과`; }; tick(); const h = setInterval(tick, 1000); return () => { clearInterval(h); return Math.round((Date.now() - t0) / 1000); }; }
+  const attemptsText = list => (list || []).map(a => a.skipped ? `${a.model} 건너뜀(쿨다운)` : `${a.model} ${a.ok ? '성공' : (a.error || '실패').replace(/^HTTP /, '').slice(0, 40)} (${(a.ms / 1000).toFixed(1)}초${a.tokens ? `, 입력 ${(a.tokens.in || 0).toLocaleString('ko-KR')}·출력 ${(a.tokens.out || 0).toLocaleString('ko-KR')}·생각 ${(a.tokens.think || 0).toLocaleString('ko-KR')} 토큰` : ''})`).join(' → ');
+  const chainText = (st, kind) => (st && st.models && st.models[kind] ? st.models[kind].join(' → ') : '서버 설정 순서');
   $('aiDraftBtn').onclick = async () => {
     const purpose = $('aiPurpose').value.trim(); if (!purpose) return Modal.alert('설문 목적을 적어 주세요.');
-    $('aiDraftBtn').disabled = true; busy($('aiDraftMsg'), true, '초안을 만드는 중… (10~30초)');
+    $('aiDraftBtn').disabled = true;
+    const st = await AiClient.status(); const want = +$('aiCount').value;
+    logClear('aiDraftLog'); log('aiDraftLog', `초안 요청: 문항 ${want}개 · 목적 "${purpose.slice(0, 30)}" · 모델 순서 ${chainText(st, 'flash')}`);
+    const stop = timer($('aiDraftMsg'), '초안을 만드는 중');
     try {
-      const want = +$('aiCount').value;
-      const { model: used, result } = await AiClient.run('draft', { purpose, audience: $('aiAudience').value.trim(), count: want, notes: $('aiNotes').value.trim() });
+      const { model: used, result, attempts } = await AiClient.run('draft', { purpose, audience: $('aiAudience').value.trim(), count: want, notes: $('aiNotes').value.trim() });
+      const sec = stop();
+      log('aiDraftLog', `응답 도착 · ${used} · ${sec}초 · 문항 ${(result.questions || []).length}개` + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : ''));
       const qs = fromAiQuestions(result.questions);
       if (!qs.length) throw new Error('문항이 만들어지지 않았습니다.');
       const short = qs.length < want ? ` 요청한 ${want}개보다 적게(${qs.length}개) 만들어졌습니다 — 모델(${used})이 일부만 돌려준 경우이니 "초안 만들기"를 다시 눌러 보거나 요청 사항에 "문항 ${want}개"를 적어 주세요.` : '';
@@ -599,15 +614,24 @@
       if (!model.description && result.description) model.description = result.description;
       model.questions.push(...qs);
       busy($('aiDraftMsg'), false, `문항 ${qs.length}개 추가 (${used}). 노란 표시 문항을 확인하고 저장하세요.` + short);
+      log('aiDraftLog', `문항 ${qs.length}개를 편집기에 넣었습니다: ` + qs.map(q => SURVEY_TYPES[q.type].name).join(', ') + (short ? ' — 요청보다 적음' : ''));
       markDirty(); renderAll();
-    } catch (err) { busy($('aiDraftMsg'), false, ''); await Modal.alert('초안 생성 실패: ' + err.message); }
+    } catch (err) { stop(); busy($('aiDraftMsg'), false, ''); log('aiDraftLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert('초안 생성 실패: ' + err.message); }
     $('aiDraftBtn').disabled = false;
   };
   $('aiReviewBtn').onclick = async () => {
     if (!model.questions.length) return Modal.alert('검토할 문항이 없습니다.');
-    $('aiReviewBtn').disabled = true; busy($('aiReviewMsg'), true, '검토 중…'); $('aiReview').innerHTML = '';
+    $('aiReviewBtn').disabled = true; $('aiReview').innerHTML = '';
+    const st = await AiClient.status();
+    logClear('aiReviewLog'); log('aiReviewLog', `검토 요청: 문항 ${model.questions.length}개 · 모델 순서 ${chainText(st, 'lite')}`);
+    const stop = timer($('aiReviewMsg'), '검토 중');
     try {
-      const { model: used, result } = await AiClient.run('review', { title: model.title, questions: model.questions.map(q => ({ type: q.type, title: q.title, description: q.description || '', required: !!q.required, options: q.options, min: q.min, max: q.max, labels: q.labels })) });
+      const { model: used, result, attempts } = await AiClient.run('review', { title: model.title, questions: model.questions.map(q => ({ type: q.type, title: q.title, description: q.description || '', required: !!q.required, options: q.options, min: q.min, max: q.max, labels: q.labels })) });
+      const sec = stop();
+      // 척도 중간 값 설명이 없다는 지적은 표준 설계에 대한 것이므로 걸러냄
+      const dropped = (result.items || []).filter(it => /중간\s*(값|설명|점|단계)|2,?\s*3,?\s*4점|양\s*끝.*(만|생략)|끝\s*값.*중간/.test((it.issue || '') + ' ' + (it.suggestion || '')));
+      result.items = (result.items || []).filter(it => !dropped.includes(it));
+      log('aiReviewLog', `응답 도착 · ${used} · ${sec}초 · 지적 ${result.items.length}건` + (dropped.length ? ` (척도 중간 설명 관련 ${dropped.length}건은 표준 설계이므로 제외)` : '') + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : ''));
       const sev = { high: ['b-bad', '중요'], medium: ['b-warn', '권장'], low: ['b-gray', '참고'] };
       $('aiReview').innerHTML = `<div class="hint"><b>총평</b> ${esc(result.overall || '')} <span class="muted">(${esc(used)})</span></div>` +
         ((result.items || []).length ? (result.items || []).map((it, k) => {
@@ -620,7 +644,7 @@
           </div>`; }).join('') : '<p class="muted">특별히 고칠 문항이 없습니다.</p>');
       $('aiReview').querySelectorAll('[data-apply]').forEach(b => b.onclick = () => { const it = result.items[+b.dataset.apply]; const q = model.questions[it.index]; if (!q) return; q.title = it.rewrite; delete q.draft; markDirty(); renderQuestions(); renderPreview(); b.textContent = '적용됨'; b.disabled = true; });
       busy($('aiReviewMsg'), false, `${(result.items || []).length}건`);
-    } catch (err) { busy($('aiReviewMsg'), false, ''); await Modal.alert('검토 실패: ' + err.message); }
+    } catch (err) { stop(); busy($('aiReviewMsg'), false, ''); log('aiReviewLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert('검토 실패: ' + err.message); }
     $('aiReviewBtn').disabled = false;
   };
   const toBase64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
