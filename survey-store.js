@@ -184,7 +184,8 @@ const AiClient = {
     const res = await fetch(MAIL_CONFIG.appsScriptUrl, { method: 'POST', body: JSON.stringify({ key: MAIL_CONFIG.apiKey, ...payload }), redirect: 'follow' });
     const text = await res.text();
     let data; try { data = JSON.parse(text); } catch { throw new Error('서버 응답을 해석할 수 없습니다. Apps Script 배포(모든 사용자, 새 버전)를 확인하세요.'); }
-    if (!data.ok) throw new Error(data.error || '서버 오류');
+    if (!data.ok) { this.lastAttempts = data.attempts || null; throw new Error(data.error || '서버 오류'); }
+    this.lastAttempts = data.attempts || null;
     return data;
   },
   async status() {
@@ -193,5 +194,7 @@ const AiClient = {
     catch (err) { this._status = { enabled: false, error: err.message }; }
     return this._status;
   },
-  async run(task, payload) { const d = await this.call({ action: 'ai', task, payload }); return { model: d.model, result: d.result }; }
+  async run(task, payload) { const d = await this.call({ action: 'ai', task, payload }); return { model: d.model, result: d.result, attempts: d.attempts || [] }; },
+  // 실패 응답에도 attempts가 실려 오면 오류 메시지에 붙여 줍니다
+  lastAttempts: null
 };

@@ -228,7 +228,7 @@
       <p class="muted" id="aiGate" style="margin:6px 0 0;display:none"></p>
     </div>
     <p class="muted" id="aiInfo" style="margin:-4px 0 4px"></p>
-    <pre id="aiLog" style="display:none;margin:0 0 10px;padding:8px 10px;background:#1e1e1e;color:#ddd;border-radius:8px;font:12px Consolas,monospace;white-space:pre-wrap;max-height:3.4em;overflow:hidden"></pre>
+    <pre id="aiLog" style="display:none;margin:0 0 10px;padding:6px 10px;background:#1e1e1e;color:#ddd;border-radius:8px;font:12px/1.5 Consolas,monospace;white-space:pre-wrap;word-break:break-all;height:calc(3em + 12px);overflow-y:auto"></pre>
     <div id="diagArea"></div>
     <div id="statsArea"></div>
     <div id="reportArea"></div>
@@ -969,8 +969,15 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   const AI_LOG = { lines: [], timer: null, t0: 0, label: '' };
   const hhmmss = () => new Date().toLocaleTimeString('ko-KR', { hour12: false });
   function aiLog(msg) {
-    AI_LOG.lines.push(`[${hhmmss()}] ${msg}`); if (AI_LOG.lines.length > 2) AI_LOG.lines.shift();
-    const el = $('aiLog'); el.textContent = AI_LOG.lines.join('\n'); el.style.display = '';
+    AI_LOG.lines.push(`[${hhmmss()}] ${msg}`);
+    const el = $('aiLog'); el.textContent = AI_LOG.lines.join('\n'); el.style.display = ''; el.scrollTop = el.scrollHeight;   // 두 줄 높이, 넘치면 스크롤
+  }
+  function aiLogClear() { AI_LOG.lines = []; $('aiLog').textContent = ''; }
+  // 서버가 돌려준 모델별 시도 내역을 한 줄로: "gemini-3.7-flash 404 (0.4초) → gemini-3.6-flash 성공 (35초, 입력 3,100·출력 1,900·생각 0 토큰)"
+  function attemptsText(list) {
+    if (!list || !list.length) return '';
+    const f = n => (n || 0).toLocaleString('ko-KR');
+    return list.map(a => a.skipped ? `${a.model} 건너뜀(쿨다운)` : `${a.model} ${a.ok ? '성공' : (a.error || '실패').replace(/^HTTP /, '').slice(0, 40)} (${(a.ms / 1000).toFixed(1)}초${a.tokens ? `, 입력 ${f(a.tokens.in)}·출력 ${f(a.tokens.out)}·생각 ${f(a.tokens.think)} 토큰` : ''})`).join(' → ');
   }
   function aiTimerStart(label) {
     aiTimerStop(); AI_LOG.t0 = Date.now(); AI_LOG.label = label;
@@ -991,17 +998,17 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     if (!await Modal.confirm(`주관식 ${textQs.length}개 문항의 응답(${list.length}건 기준)을 AI로 요약할까요?\n이름·이메일은 보내지 않고 답변 내용만 보냅니다. 결과는 설문에 저장되어 다시 열어도 유지됩니다.`)) return;
     const sid = SID, cur = CUR, base = CUR.ai, basis = respSig(); AI_BUSY = true;
     $('aiSummarize').disabled = true; const summary = Object.assign({}, (base || {}).summary || {}); let done = 0, lastModel = '', firstDone = null;
-    aiLog(`주관식 요약 시작: ${textQs.length}개 문항, 응답 ${list.length}건 · 모델 순서 ${chainText(st, 'lite')}`);
+    aiLogClear(); aiLog(`주관식 요약 시작: ${textQs.length}개 문항, 응답 ${list.length}건 · 모델 순서 ${chainText(st, 'lite')}`);
     for (const [i, q] of textQs.entries()) {
       const answers = list.map(r => r.answers?.[q.id]).filter(a => typeof a === 'string' && a.trim());
       if (!answers.length) { delete summary[q.id]; if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 답변 없음 → 건너뜀`); continue; }
       if (still(sid)) aiTimerStart(`AI 요약 중 (${i + 1}/${textQs.length}) ${q.title.slice(0, 30)} · ${answers.length}건`);
       try {
-        const { model, result } = await AiClient.run('summarize', { title: cur.title, question: q.title, answers: answers.slice(0, 500) });
+        const { model, result, attempts } = await AiClient.run('summarize', { title: cur.title, question: q.title, answers: answers.slice(0, 500) });
         const sec = aiTimerStop();
         summary[q.id] = { result, model, at: Date.now(), count: answers.length }; lastModel = model; done++; if (!firstDone) firstDone = q.id;
-        if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 완료 · ${model} · ${sec}초 · 주제 ${(result.themes || []).length}개`);
-      } catch (err) { aiTimerStop(); if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 실패: ${err.message}`); await Modal.alert(`"${q.title}" 요약 실패: ${err.message}`); }
+        if (still(sid)) { aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 완료 · ${model} · ${sec}초 · 주제 ${(result.themes || []).length}개`); if (attempts && attempts.length) aiLog('  모델 시도: ' + attemptsText(attempts)); }
+      } catch (err) { aiTimerStop(); if (still(sid)) { aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 실패: ${err.message}`); if (AiClient.lastAttempts) aiLog('  모델 시도: ' + attemptsText(AiClient.lastAttempts)); } await Modal.alert(`"${q.title}" 요약 실패: ${err.message}`); }
     }
     try { await saveAiTo(sid, base, { summary, summaryBasis: basis }); } catch (err) { await Modal.alert('요약 저장 실패: ' + err.message); }
     $('aiSummarize').disabled = false; AI_BUSY = false;
@@ -1038,11 +1045,11 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     $('reportArea').innerHTML = `<div class="card" id="reportCard">
       <div class="row" style="justify-content:space-between"><h3 style="margin:0">${esc(r.title || CUR.title + ' 결과 보고서')}</h3>
         <div class="row" style="margin:0"><span class="muted">${esc(rp.model)} · ${esc(fmt(rp.at))}</span><button class="btn sec" id="reportPrint">보고서만 인쇄 / PDF 저장</button><button class="btn sec" id="reportCopy">본문 복사</button></div></div>
-      ${(r.sections || []).map(sec => `<h4 style="margin:14px 0 4px">${esc(sec.heading)}</h4><div style="white-space:pre-wrap">${esc(sec.body)}</div>`).join('')}
+      ${(r.sections || []).map(sec => `<h4 style="margin:14px 0 4px">${esc(sec.heading)}</h4>${sectionHtml(sec)}`).join('')}
     </div>`;
     $('reportPrint').onclick = () => {
       const w = window.open('', '_blank');
-      w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${esc(r.title || '결과 보고서')}</title><style>body{font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;max-width:800px;margin:40px auto;line-height:1.7;color:#222}h1{font-size:22px}h2{font-size:16px;margin:22px 0 6px;border-left:4px solid #1f5fbf;padding-left:8px}div{white-space:pre-wrap}p.meta{color:#667;font-size:12px}</style></head><body><h1>${esc(r.title || '')}</h1><p class="meta">${esc(CUR.title)} · 작성 ${esc(fmt(rp.at))} · AI(${esc(rp.model)}) 초안, 담당자 검토 필요</p>${(r.sections || []).map(sec => `<h2>${esc(sec.heading)}</h2><div>${esc(sec.body)}</div>`).join('')}</body></html>`);
+      w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${esc(r.title || '결과 보고서')}</title><style>body{font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;max-width:800px;margin:40px auto;line-height:1.7;color:#222}h1{font-size:22px}h2{font-size:16px;margin:22px 0 6px;border-left:4px solid #1f5fbf;padding-left:8px}p.meta,.muted{color:#667;font-size:12px}table{page-break-inside:avoid}</style></head><body><h1>${esc(r.title || '')}</h1><p class="meta">${esc(CUR.title)} · 작성 ${esc(fmt(rp.at))} · AI(${esc(rp.model)}) 초안, 담당자 검토 필요</p>${(r.sections || []).map(sec => `<h2>${esc(sec.heading)}</h2>${sectionHtml(sec)}`).join('')}</body></html>`);
       w.document.close(); setTimeout(() => w.print(), 300);
     };
     $('reportCopy').onclick = async () => { await navigator.clipboard.writeText((r.title || '') + '\n\n' + (r.sections || []).map(sec => '■ ' + sec.heading + '\n' + sec.body).join('\n\n')); Modal.toast('보고서 본문을 복사했습니다'); };
@@ -1057,11 +1064,13 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     $('aiReport').disabled = true;
     const data = statsForReport();
     const textSection = textSummarySection(cur);   // 주관식 절은 AI 요약 결과를 그대로 사용(모델에 다시 쓰게 하지 않음)
-    aiLog(`보고서 작성 시작: 문항 ${data.questions.length}개, 응답 ${data.counts.응답합계}건${textSection ? ', 주관식 요약 ' + Object.keys(base.summary).length + '개 그대로 사용' : ''} · 모델 순서 ${chainText(st, 'flash')}`);
+    if (textSection) data.questions.forEach(q => { if (q.AI요약) q.AI요약 = { summary: q.AI요약.summary, themes: (q.AI요약.themes || []).map(t => t.theme + ' ' + t.count + '건') }; });   // 모델에는 요약문·주제명만 보내 입력을 줄임
+    aiLogClear(); aiLog(`보고서 작성 시작: 문항 ${data.questions.length}개, 응답 ${data.counts.응답합계}건${textSection ? ', 주관식 요약 ' + Object.keys(base.summary).length + '개 그대로 사용' : ''} · 모델 순서 ${chainText(st, 'flash')}`);
     aiTimerStart('AI 보고서 작성 중');
     try {
-      const { model, result } = await AiClient.run('report', { data, textSummaryProvided: !!textSection });
+      const { model, result, attempts } = await AiClient.run('report', { data, textSummaryProvided: !!textSection });
       const sec = aiTimerStop();
+      if (still(sid) && attempts && attempts.length) aiLog('모델 시도: ' + attemptsText(attempts));
       if (textSection) {
         result.sections = (result.sections || []).filter(x => !/주관식|자유 ?의견|서술/.test(x.heading || ''));
         const idx = result.sections.findIndex(x => /시사점|제안|결론/.test(x.heading || ''));
@@ -1071,23 +1080,35 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       if (!still(sid)) { AI_BUSY = false; renderAiButtons(); return; }
       aiLog(`보고서 완료 · ${model} · ${sec}초 · 절 ${result.sections.length}개`);
       $('aiInfo').textContent = `보고서 작성 완료 (${model}, ${sec}초)`; renderReport(); $('reportArea').scrollIntoView({ behavior: 'smooth' });
-    } catch (err) { aiTimerStop(); if (still(sid)) { aiLog('보고서 실패: ' + err.message); $('aiInfo').textContent = ''; } await Modal.alert('보고서 작성 실패: ' + err.message); }
+    } catch (err) { aiTimerStop(); if (still(sid)) { aiLog('보고서 실패: ' + err.message); if (AiClient.lastAttempts) aiLog('  모델 시도: ' + attemptsText(AiClient.lastAttempts)); $('aiInfo').textContent = ''; } await Modal.alert('보고서 작성 실패: ' + err.message); }
     AI_BUSY = false; renderAiButtons();
   };
   // 저장된 주관식 AI 요약을 보고서 절 하나로 정리 (요약 본문·주제별 응답 수·대표 의견·개선 제안을 그대로 옮김)
+  // blocks: 문항별 {question, count, summary, themes[], sentiment, suggestions[]} — 화면·인쇄에서는 요약 상자와 같은 표로, 복사에서는 body(평문)로 사용
   function textSummarySection(sv) {
     const sum = sv.ai && sv.ai.summary; if (!sum || !Object.keys(sum).length) return null;
-    const parts = [];
+    const parts = [], blocks = [];
     sv.questions.forEach((q, i) => {
       const s = sum[q.id]; if (!s) return; const r = s.result;
+      blocks.push({ question: `${i + 1}. ${q.title}`, count: s.count, summary: r.summary || '', themes: r.themes || [], sentiment: r.sentiment || null, suggestions: r.suggestions || [] });
       let t = `${i + 1}. ${q.title} (응답 ${s.count}건)\n${r.summary || ''}`;
       if ((r.themes || []).length) t += '\n' + r.themes.map(th => `- ${th.theme}: ${th.count}건` + ((th.quotes || []).length ? ` (예: “${th.quotes[0]}”)` : '')).join('\n');
       if (r.sentiment && (r.sentiment.positive || r.sentiment.negative || r.sentiment.neutral)) t += `\n- 긍정 ${r.sentiment.positive || 0} · 부정 ${r.sentiment.negative || 0} · 중립 ${r.sentiment.neutral || 0}`;
       if ((r.suggestions || []).length) t += '\n개선 제안\n' + r.suggestions.map(x => '- ' + x).join('\n');
       parts.push(t);
     });
-    return parts.length ? { heading: '주관식 의견 요약', body: parts.join('\n\n') } : null;
+    return parts.length ? { heading: '주관식 의견 요약', body: parts.join('\n\n'), blocks } : null;
   }
+  // 주관식 절을 표로 그리기 (통계 탭의 AI 요약 상자와 같은 형식)
+  function blocksHtml(blocks) {
+    const td = 'padding:4px 6px;border-bottom:1px solid #e3e3e3;vertical-align:top', th = 'text-align:left;padding:4px 6px;border-bottom:1px solid #bbb;background:#f5f7fb';
+    return blocks.map(b => `<div style="margin:0 0 14px"><b>${esc(b.question)}</b> <span class="muted">(응답 ${b.count}건)</span>
+      <p style="margin:4px 0">${esc(b.summary)}</p>
+      ${b.themes.length ? `<table style="margin:4px 0;width:100%;border-collapse:collapse;font-size:13px"><tr><th style="${th}">주제</th><th style="${th};white-space:nowrap">응답 수</th><th style="${th}">대표 의견</th></tr>${b.themes.map(t => `<tr><td style="${td}">${esc(t.theme)}</td><td style="${td}">${t.count}</td><td style="${td};white-space:normal">${(t.quotes || []).map(q => '“' + esc(q) + '”').join('<br>')}</td></tr>`).join('')}</table>` : ''}
+      ${b.sentiment && (b.sentiment.positive || b.sentiment.negative || b.sentiment.neutral) ? `<div class="muted">긍정 ${b.sentiment.positive || 0} · 부정 ${b.sentiment.negative || 0} · 중립 ${b.sentiment.neutral || 0}</div>` : ''}
+      ${b.suggestions.length ? `<div style="margin-top:4px"><b>개선 제안</b><ul style="margin:4px 0 0 18px;padding:0">${b.suggestions.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}</div>`).join('');
+  }
+  const sectionHtml = sec => sec.blocks && sec.blocks.length ? blocksHtml(sec.blocks) : `<div style="white-space:pre-wrap">${esc(sec.body)}</div>`;
 
   function renderCharts() {
     try { renderChartsInner(); }
