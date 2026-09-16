@@ -40,7 +40,7 @@
   .login input { width: 100%; margin-bottom: 10px; }
   .q-block { margin-bottom: 26px; }
   .q-block h3 { font-size: 15px; margin: 0 0 8px; }
-  .chart-wrap { max-width: 640px; }
+  .chart-wrap { max-width: 720px; height: 280px; position: relative; margin-bottom: 8px; }
   .text-list li { margin-bottom: 6px; }
   .progress { height: 8px; background: #eef0f4; border-radius: 4px; overflow: hidden; margin-top: 6px; }
   .progress i { display: block; height: 100%; background: var(--c); }
@@ -771,6 +771,23 @@
     return responses.filter(r => (!g || r.group === g) && (!c || channelOf(r) === c));
   };
 
+  /* ---- 차트 공통: 색상(색각 이상 검증 팔레트)과 값 표시 ---- */
+  const CHART_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948', '#5aa9f0', '#b06a3b'];
+  // 막대 위에 "n건 (p%)" 표시
+  const BAR_LABELS = { id: 'barLabels', afterDatasetsDraw(chart) {
+    const { ctx } = chart, ds = chart.data.datasets[0], meta = chart.getDatasetMeta(0), total = ds.data.reduce((a, b) => a + b, 0);
+    ctx.save(); ctx.font = '12px "Malgun Gothic", sans-serif'; ctx.fillStyle = '#333'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    meta.data.forEach((bar, i) => { const v = ds.data[i]; if (!v) return; ctx.fillText(`${v}건 (${total ? Math.round(v / total * 100) : 0}%)`, bar.x, bar.y - 4); });
+    ctx.restore();
+  } };
+  // 원그래프 조각 안에 비율 표시(조각이 충분히 클 때만)
+  const PIE_LABELS = { id: 'pieLabels', afterDatasetsDraw(chart) {
+    const { ctx } = chart, ds = chart.data.datasets[0], meta = chart.getDatasetMeta(0), total = ds.data.reduce((a, b) => a + b, 0);
+    ctx.save(); ctx.font = 'bold 12px "Malgun Gothic", sans-serif'; ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    meta.data.forEach((arc, i) => { const v = ds.data[i]; if (!v || !total || v / total < 0.07) return; const p = arc.tooltipPosition(); ctx.fillText(`${Math.round(v / total * 100)}%`, p.x, p.y); });
+    ctx.restore();
+  } };
+
   /* ---- AI 요약·보고서 ---- */
   const aiSum = qid => CUR.ai && CUR.ai.summary && CUR.ai.summary[qid];
   function aiSummaryHtml(qid) {
@@ -789,7 +806,7 @@
     await store.doc(SID).set({ ai }, { merge: true }); CUR.ai = ai;
   }
   $('aiSummarize').onclick = async () => {
-    const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI가 설정되지 않았습니다. Apps Script 스크립트 속성에 GEMINI_API_KEY를 넣고 새 버전으로 배포하세요.' + (st.error ? '\n' + st.error : ''));
+    const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI를 쓸 수 없습니다.\n' + (st.error ? '서버 응답: ' + st.error + '\n\n새 Code.gs를 붙여 넣은 뒤 "배포 > 배포 관리 > 편집 > 새 버전 > 배포"를 했는지 확인하세요. 편집기에서 testGemini가 성공해도 웹 앱 주소는 마지막으로 배포한 버전의 코드를 실행합니다.' : 'Apps Script 스크립트 속성에 GEMINI_API_KEY를 넣고 새 버전으로 배포하세요.'));
     const list = filteredResponses();
     const textQs = CUR.questions.filter(q => ['short', 'long', 'text'].includes(q.type));
     if (!textQs.length) return Modal.alert('주관식 문항이 없습니다.');
@@ -844,7 +861,7 @@
     $('reportCopy').onclick = async () => { await navigator.clipboard.writeText((r.title || '') + '\n\n' + (r.sections || []).map(sec => '■ ' + sec.heading + '\n' + sec.body).join('\n\n')); Modal.toast('보고서 본문을 복사했습니다'); };
   }
   $('aiReport').onclick = async () => {
-    const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI가 설정되지 않았습니다. Apps Script 스크립트 속성에 GEMINI_API_KEY를 넣고 새 버전으로 배포하세요.');
+    const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI를 쓸 수 없습니다.\n' + (st.error ? '서버 응답: ' + st.error + '\n\n새 Code.gs를 붙여 넣은 뒤 "배포 > 배포 관리 > 편집 > 새 버전 > 배포"를 했는지 확인하세요. 편집기에서 testGemini가 성공해도 웹 앱 주소는 마지막으로 배포한 버전의 코드를 실행합니다.' : 'Apps Script 스크립트 속성에 GEMINI_API_KEY를 넣고 새 버전으로 배포하세요.'));
     if (!responses.length) return Modal.alert('응답이 없어 보고서를 만들 수 없습니다.');
     const hasText = CUR.questions.some(q => ['short', 'long', 'text'].includes(q.type)), hasSum = CUR.ai && CUR.ai.summary && Object.keys(CUR.ai.summary).length;
     if (hasText && !hasSum && !await Modal.confirm('주관식 AI 요약이 아직 없습니다. 요약 없이 수치만으로 보고서를 만들까요? (취소 후 "AI 주관식 요약"을 먼저 실행하면 더 충실한 보고서가 됩니다)')) return;
@@ -901,11 +918,31 @@
         labels.map((l, i) => `<tr><td>${esc(l)}</td><td>${counts[i]}</td><td>${total ? Math.round(counts[i] / total * 100) : 0}%<div class="progress"><i style="width:${total ? counts[i] / total * 100 : 0}%"></i></div></td></tr>`).join('') + extra;
 
       if (!window.Chart) { $('c_' + q.id).parentElement.innerHTML = '<p class="muted">차트 라이브러리를 불러오지 못해 표로만 표시합니다.</p>'; continue; }
-      charts[q.id] = new Chart($('c_' + q.id), {
-        type: 'bar',
-        data: { labels, datasets: [{ label: '응답 수', data: counts, backgroundColor: '#1f5fbf' }] },
-        options: { indexAxis: numeric ? 'x' : 'y', plugins: { legend: { display: false } }, scales: { [numeric ? 'y' : 'x']: { beginAtZero: true, ticks: { precision: 0 } } } }
-      });
+      const colors = labels.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
+      const pct = v => total ? Math.round(v / total * 100) : 0;
+      if (numeric) {
+        // 선형 배율·별점: 점수별로 색이 다른 막대 + 막대 위에 건수(비율)
+        charts[q.id] = new Chart($('c_' + q.id), {
+          type: 'bar',
+          data: { labels, datasets: [{ label: '응답 수', data: counts, backgroundColor: colors, borderRadius: 4, maxBarThickness: 56 }] },
+          options: { maintainAspectRatio: false, layout: { padding: { top: 22 } },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.parsed.y}건 (${pct(c.parsed.y)}%)` } } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#eef0f4' } }, x: { grid: { display: false }, title: { display: !!(q.labels && (q.labels[0] || q.labels[1])), text: q.labels ? `${q.labels[0] || ''}  ←  →  ${q.labels[1] || ''}` : '' } } } },
+          plugins: [BAR_LABELS]
+        });
+      } else {
+        // 객관식·체크박스·드롭다운: 항목별 색이 다른 원그래프 + 범례에 건수(비율)
+        charts[q.id] = new Chart($('c_' + q.id), {
+          type: 'doughnut',
+          data: { labels, datasets: [{ data: counts, backgroundColor: colors, borderColor: '#fff', borderWidth: 2 }] },
+          options: { maintainAspectRatio: false, cutout: '45%',
+            plugins: {
+              legend: { position: 'right', labels: { boxWidth: 14, boxHeight: 14, padding: 10, generateLabels: chart => chart.data.labels.map((l, i) => ({ text: `${l}  ${counts[i]}건 (${pct(counts[i])}%)`, fillStyle: colors[i], strokeStyle: '#fff', hidden: false, index: i })) } },
+              tooltip: { callbacks: { label: c => ` ${c.parsed}건 (${pct(c.parsed)}%)` } }
+            } },
+          plugins: [PIE_LABELS]
+        });
+      }
     }
   }
 
@@ -1054,7 +1091,7 @@
     $('quotaInfo').textContent = '확인 중…';
     try {
       const d = await callMailServer({ action: 'quota' });
-      $('quotaInfo').textContent = `연결 정상 — 오늘 남은 발송 가능 인원 ${d.remaining}명`;
+      $('quotaInfo').innerHTML = `연결 정상 — 오늘 남은 발송 가능 인원 ${d.remaining}명 · 서버 코드 ${d.version ? '<span class="badge b-ok">' + esc(d.version) + '</span>' : '<span class="badge b-bad">구버전</span> <span class="muted">새 Code.gs가 배포되지 않았습니다. 배포 관리 > 편집 > 새 버전 > 배포</span>'} · AI 키 ${d.version ? (d.ai ? '<span class="badge b-ok">있음</span>' : '<span class="badge b-bad">없음</span> <span class="muted">스크립트 속성 GEMINI_API_KEY 확인</span>') : '-'}`;
     } catch (err) { $('quotaInfo').textContent = '연결 실패: ' + err.message; }
   };
   $('testMail').onclick = async () => {
