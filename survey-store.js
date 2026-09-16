@@ -179,12 +179,30 @@ const ContactStore = {
 const AiClient = {
   _status: null,
   configured() { return typeof MAIL_CONFIG !== 'undefined' && MAIL_CONFIG.appsScriptUrl && !MAIL_CONFIG.appsScriptUrl.includes('여기에') && MAIL_CONFIG.apiKey && !MAIL_CONFIG.apiKey.startsWith('여기에'); },
-  async call(payload) {
+  // JSON이 아닌 응답(구글 HTML 화면)을 사람이 읽을 수 있게 요약: 제목과 본문 앞부분
+  describeHtml(text, status) {
+    const title = (text.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || '';
+    const body = text.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+    const login = /accounts\.google|로그인|Sign in/i.test(title + body);
+    const busy = /잠시 후|try again|일시적|temporar|unavailable|오류가 발생/i.test(title + body);
+    const hint = login ? '→ 배포의 "액세스 권한"이 "모든 사용자"가 아닙니다. 배포 관리 > 편집에서 "모든 사용자"로 바꾸고 새 버전으로 배포하세요.'
+      : busy ? '→ 구글 서버가 일시적으로 요청을 처리하지 못했습니다(대개 처리 시간이 길 때). 잠시 후 다시 시도하면 대부분 성공합니다.'
+      : '→ 배포 관리 > 편집 > "새 버전"으로 다시 배포했는지, 관리 화면의 발송 서버 주소가 그 배포의 /exec 주소인지 확인하세요.';
+    return { login, busy, text: `HTTP ${status}${title ? ' · 제목 "' + title + '"' : ''}${body ? ' · 내용 "' + body + '"' : ''} ${hint}` };
+  },
+  async call(payload, _retry) {
     this.lastAttempts = null;
     if (!this.configured()) throw new Error('firebase-config.js의 MAIL_CONFIG(발송 서버)가 설정되지 않았습니다.');
     const res = await fetch(MAIL_CONFIG.appsScriptUrl, { method: 'POST', body: JSON.stringify({ key: MAIL_CONFIG.apiKey, ...payload }), redirect: 'follow' });
     const text = await res.text();
-    let data; try { data = JSON.parse(text); } catch { throw new Error('서버 응답을 해석할 수 없습니다. Apps Script 배포(모든 사용자, 새 버전)를 확인하세요.'); }
+    let data;
+    try { data = JSON.parse(text); }
+    catch {
+      const d = this.describeHtml(text, res.status);
+      // 구글의 일시 오류 화면이면 3초 뒤 한 번 자동 재시도
+      if (!d.login && !_retry) { await new Promise(r => setTimeout(r, 3000)); return this.call(payload, true); }
+      throw new Error('서버가 JSON 대신 HTML 화면을 돌려줬습니다. ' + d.text);
+    }
     if (!data.ok) { this.lastAttempts = data.attempts || null; throw new Error(data.error || '서버 오류'); }
     this.lastAttempts = data.attempts || null;
     return data;
@@ -195,7 +213,12 @@ const AiClient = {
     catch (err) { this._status = { enabled: false, error: err.message }; }
     return this._status;
   },
-  async run(task, payload) { const d = await this.call({ action: 'ai', task, payload }); return { model: d.model, result: d.result, attempts: d.attempts || [] }; },
+  async run(task, payload) {
+    const d = await this.call({ action: 'ai', task, payload });
+    // 서버가 ok:true인데 result가 없는 경우(배포 버전 불일치 등)를 그대로 넘기면 화면 코드가 이해하기 어려운 오류를 냅니다
+    if (d.result === undefined || d.result === null) throw new Error(`서버가 결과 없이 응답했습니다(작업 ${task}). 서버 응답: ${JSON.stringify(d).slice(0, 200)} — Apps Script를 최신 Code.gs로 "새 버전" 배포했는지 확인하세요.`);
+    return { model: d.model, result: d.result, attempts: d.attempts || [] };
+  },
   // 실패 응답에도 attempts가 실려 오면 오류 메시지에 붙여 줍니다
   lastAttempts: null
 };
