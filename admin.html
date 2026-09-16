@@ -54,6 +54,13 @@
   .progress { height: 8px; background: #eef0f4; border-radius: 4px; overflow: hidden; margin-top: 6px; }
   .progress i { display: block; height: 100%; background: var(--c); }
   #log { font-family: Consolas, monospace; font-size: 12px; background: #1e1e1e; color: #ddd; padding: 10px; border-radius: 8px; max-height: 160px; overflow: auto; white-space: pre-wrap; display: none; }
+  /* 전체 DB 리스트: 좌우 스크롤 없이 한 화면에 */
+  .db-table { table-layout: fixed; font-size: 12px; }
+  .db-table th, .db-table td { padding: 6px 5px; white-space: normal; word-break: break-all; vertical-align: middle; }
+  .db-table th { font-size: 11px; line-height: 1.3; }
+  .db-table td.num, .db-table th.num { text-align: center; }
+  .db-table .btn.sm { padding: 3px 6px; font-size: 11px; }
+  .db-table .st-badge { padding: 2px 7px; font-size: 11px; white-space: nowrap; }
   .hint { background: #fff8e6; border: 1px solid #f3dca0; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
 </style>
 </head>
@@ -213,19 +220,19 @@
             <option value="open">공개 설문 응답만</option>
           </select>
           <select id="groupFilter"><option value="">전체 소속</option></select>
-          <button class="btn sec" id="exportResp">응답 원본 CSV</button>
           <button class="btn" id="aiSummarize" title="주관식 응답을 Gemini가 주제별로 요약">AI 주관식 요약</button>
           <button class="btn" id="aiReport" title="통계와 요약으로 결과 보고서 작성">AI 보고서 작성</button>
           <button class="btn sec" id="printBtn">인쇄 / PDF 저장</button>
         </div>
       </div>
     </div>
-    <p class="muted" id="aiInfo" style="margin:-4px 0 10px"></p>
+    <p class="muted" id="aiInfo" style="margin:-4px 0 4px"></p>
+    <pre id="aiLog" style="display:none;margin:0 0 10px;padding:8px 10px;background:#1e1e1e;color:#ddd;border-radius:8px;font:12px Consolas,monospace;white-space:pre-wrap;max-height:3.4em;overflow:hidden"></pre>
     <div id="diagArea"></div>
     <div id="statsArea"></div>
     <div id="reportArea"></div>
     <div class="card">
-      <h3 style="margin-top:0">응답 목록</h3>
+      <div class="row" style="justify-content:space-between"><h3 style="margin:0">응답 목록</h3><button class="btn sec sm" id="exportResp">응답 원본 CSV 내려받기</button></div>
       <div class="tbl"><table><thead><tr><th>제출 시각</th><th>경로</th><th>이름</th><th>이메일</th><th>소속</th><th>작업</th></tr></thead><tbody id="respBody"></tbody></table></div>
     </div>
   </div>
@@ -292,8 +299,9 @@
         <div class="row" style="margin:0"><label class="muted"><input type="checkbox" id="dbArchived" checked> 보관·마감 포함</label><button class="btn sec sm" id="dbRefresh">새로 고침</button></div>
       </div>
       <p class="muted">Firestore의 <code>surveys</code> 컬렉션에 저장된 모든 설문과 그 하위 데이터(대상자·응답) 건수입니다. 행을 누르면 그 설문이 선택되어 다른 탭에서 바로 볼 수 있습니다.</p>
-      <div class="tbl"><table>
-        <thead><tr><th>#</th><th>설문 제목</th><th>설문 ID</th><th>상태</th><th>만든 날</th><th>마감</th><th>문항</th><th>대상자</th><th>발송</th><th>열람</th><th>제출</th><th>응답(메일/공개)</th><th>마지막 응답</th><th>작업</th></tr></thead>
+      <div class="tbl"><table class="db-table">
+        <colgroup><col style="width:3%"><col style="width:21%"><col style="width:11%"><col style="width:6.5%"><col style="width:8%"><col style="width:8%"><col style="width:4.5%"><col style="width:5%"><col style="width:4.5%"><col style="width:4.5%"><col style="width:4.5%"><col style="width:6.5%"><col style="width:8%"><col style="width:15%"></colgroup>
+        <thead><tr><th class="num">#</th><th>설문 제목</th><th>설문 ID</th><th>상태</th><th>만든 날</th><th>마감</th><th class="num">문항</th><th class="num">대상자</th><th class="num">발송</th><th class="num">열람</th><th class="num">제출</th><th class="num">응답<br>(메일/공개)</th><th>마지막 응답</th><th>작업</th></tr></thead>
         <tbody id="dbBody"><tr><td colspan="14" class="muted">탭을 열면 읽어 옵니다…</td></tr></tbody>
       </table></div>
       <p class="muted" id="dbLists"></p>
@@ -432,6 +440,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     $('svArchive').textContent = CUR.status === 'archived' ? '복원' : '보관';
     unsubs.forEach(u => u()); unsubs = [];
     recipients = []; responses = [];
+    aiPanelReset();   // 다른 설문의 AI 진행 상태·안내는 지움
     renderStats(); renderRecipients(); renderResponses(); renderCharts(); renderReport();
     // orderBy를 쓰지 않습니다: Firestore는 정렬 필드가 없는 문서를 결과에서 빼 버려 예전 데이터가 사라져 보일 수 있음. 화면에서 정렬
     unsubs.push(store.recipients(SID).onSnapshot(snap => {
@@ -450,6 +459,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   const stateOf = sv => sv.status === 'archived' ? 'archived' : isClosedSv(sv) ? 'closed' : 'open';
   const STATE_LABEL = { open: '진행 중', closed: '마감', archived: '보관' };
   const fmtDeadline = d => d ? d.replace(/-/g, '.') + '.' : '';
+  const fmtDate = t => { const d = new Date(typeof t === 'number' ? t : ms(t)); const z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}.${z(d.getMonth() + 1)}.${z(d.getDate())}.`; };
   function renderState() {
     const el = $('surveyState'); if (!SID) { $('sState').textContent = '-'; $('sStateSub').textContent = '설문 상태'; return; }
     const st = stateOf(CUR); el.className = 'stat state st-' + st;
@@ -537,11 +547,11 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       body.innerHTML = rows.map(({ sv, rec, res, last }, i) => {
         const st = stateOf(sv), mail = res.filter(r => channelOf(r) === 'email').length;
         return `<tr data-sid="${esc(sv.id)}" style="cursor:pointer${sv.id === SID ? ';background:#fff8e6' : ''}">
-          <td>${i + 1}</td><td style="white-space:normal;min-width:180px">${esc(sv.title || '(제목 없음)')}${sv.isTest ? ' <span class="badge b-warn">TEST</span>' : ''}</td><td><code>${esc(sv.id)}</code></td>
-          <td><span class="st-badge st-${st}">${STATE_LABEL[st]}</span></td><td>${sv.createdAtMs ? new Date(sv.createdAtMs).toLocaleDateString('ko-KR') : ''}</td><td>${esc(sv.deadline || '')}</td>
-          <td>${(sv.questions || []).length}</td><td>${rec.length}</td><td>${rec.filter(r => r.sendStatus === 'sent').length}</td><td>${rec.filter(r => r.openedAt).length}</td><td>${rec.filter(r => r.submittedAt).length}</td>
-          <td>${res.length} (${mail}/${res.length - mail})</td><td>${last ? fmt(last) : ''}</td>
-          <td style="white-space:nowrap"><button class="btn sm sec" data-pick="${esc(sv.id)}">선택</button> <button class="btn sm sec" data-resp="${esc(sv.id)}">응답 보기</button> <button class="btn sm danger" data-del="${esc(sv.id)}">삭제</button></td></tr>
+          <td class="num">${i + 1}</td><td>${esc(sv.title || '(제목 없음)')}${sv.isTest ? ' <span class="badge b-warn">TEST</span>' : ''}</td><td><code>${esc(sv.id)}</code></td>
+          <td><span class="st-badge st-${st}">${STATE_LABEL[st]}</span></td><td>${sv.createdAtMs ? fmtDate(sv.createdAtMs) : ''}</td><td>${fmtDeadline(sv.deadline)}</td>
+          <td class="num">${(sv.questions || []).length}</td><td class="num">${rec.length}</td><td class="num">${rec.filter(r => r.sendStatus === 'sent').length}</td><td class="num">${rec.filter(r => r.openedAt).length}</td><td class="num">${rec.filter(r => r.submittedAt).length}</td>
+          <td class="num">${res.length} (${mail}/${res.length - mail})</td><td>${last ? fmtDate(last) : ''}</td>
+          <td style="white-space:nowrap"><button class="btn sm sec" data-pick="${esc(sv.id)}">선택</button> <button class="btn sm sec" data-resp="${esc(sv.id)}">응답</button> <button class="btn sm danger" data-del="${esc(sv.id)}">삭제</button></td></tr>
           <tr class="db-detail" data-detail="${esc(sv.id)}" style="display:none"><td colspan="14" style="white-space:normal;background:#fafbfd;padding:10px 14px"></td></tr>`;
       }).join('') || '<tr><td colspan="14" class="muted">설문이 없습니다.</td></tr>';
       const DB_ROWS = {}; rows.forEach(r => DB_ROWS[r.sv.id] = r);
@@ -568,7 +578,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const list = row.res.slice().sort((a, b) => ms(b.submittedAt) - ms(a.submittedAt));
     const cell = v => { const t = Array.isArray(v) ? v.join(', ') : (v == null || v === '' ? '' : String(v)); return `<td style="white-space:normal;max-width:260px" title="${esc(t)}">${esc(t.length > 60 ? t.slice(0, 60) + '…' : t)}</td>`; };
     tr.firstElementChild.innerHTML = list.length ? `<div class="muted" style="margin-bottom:6px">응답 ${list.length}건 · 문항 ${qs.length}개 · 열 제목은 문항 번호와 ID</div>
-      <div class="tbl" style="max-height:420px;overflow:auto"><table><thead><tr><th>제출 시각</th><th>경로</th><th>이름</th><th>소속</th>${qs.map((q, i) => `<th title="${esc(q.title)}">${i + 1}. ${esc(q.title.slice(0, 14))}${q.title.length > 14 ? '…' : ''} <span class="muted">(${esc(q.id)})</span></th>`).join('')}<th>문항에 없는 키</th></tr></thead>
+      <div class="tbl" style="max-height:420px;overflow:auto"><table style="table-layout:auto;font-size:12px"><thead><tr><th style="white-space:nowrap">제출 시각</th><th>경로</th><th>이름</th><th>소속</th>${qs.map((q, i) => `<th title="${esc(q.title)}">${i + 1}. ${esc(q.title.slice(0, 14))}${q.title.length > 14 ? '…' : ''} <span class="muted">(${esc(q.id)})</span></th>`).join('')}<th>문항에 없는 키</th></tr></thead>
       <tbody>${list.map(r => { const a = r.answers || {}; const extra = Object.keys(a).filter(k => !qs.some(q => q.id === k)); return `<tr><td>${esc(fmt(r.submittedAt))}</td><td>${channelLabel(r)}</td><td>${esc(r.name || '(익명)')}</td><td>${esc(r.group || '')}</td>${qs.map(q => cell(a[q.id])).join('')}<td style="white-space:normal">${extra.map(k => `<code>${esc(k)}</code>=${esc(String(Array.isArray(a[k]) ? a[k].join(', ') : a[k])).slice(0, 30)}`).join(' / ')}</td></tr>`; }).join('')}</tbody></table></div>`
       : '<span class="muted">이 설문에는 응답 문서가 없습니다.</span>';
     tr.style.display = '';
@@ -907,28 +917,57 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       ${(r.suggestions || []).length ? `<div style="margin-top:4px"><b>개선 제안</b><ul style="margin:4px 0 0 18px;padding:0">${r.suggestions.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
     </div>`;
   }
-  async function saveAi(patch) {
-    const ai = Object.assign({}, CUR.ai || {}, patch);
-    await store.doc(SID).set({ ai }, { merge: true }); CUR.ai = ai;
+  // 특정 설문(sid)의 ai 필드에 저장 — 진행 중 다른 설문으로 바꿔도 원래 설문에 저장됨
+  async function saveAiTo(sid, base, patch) {
+    const ai = Object.assign({}, base || {}, patch);
+    await store.doc(sid).set({ ai }, { merge: true });
+    if (sid === SID) CUR.ai = ai;
+    return ai;
   }
+  // 진행 로그(최근 2줄만) + 경과 시간 표시
+  const AI_LOG = { lines: [], timer: null, t0: 0, label: '' };
+  const hhmmss = () => new Date().toLocaleTimeString('ko-KR', { hour12: false });
+  function aiLog(msg) {
+    AI_LOG.lines.push(`[${hhmmss()}] ${msg}`); if (AI_LOG.lines.length > 2) AI_LOG.lines.shift();
+    const el = $('aiLog'); el.textContent = AI_LOG.lines.join('\n'); el.style.display = '';
+  }
+  function aiTimerStart(label) {
+    aiTimerStop(); AI_LOG.t0 = Date.now(); AI_LOG.label = label;
+    const tick = () => { const sec = Math.round((Date.now() - AI_LOG.t0) / 1000); $('aiInfo').textContent = `${AI_LOG.label} · ${sec}초 경과${sec > 45 ? ' (모델이 바쁘면 다음 모델로 자동 전환됩니다)' : ''}`; };
+    tick(); AI_LOG.timer = setInterval(tick, 1000);
+  }
+  function aiTimerStop() { if (AI_LOG.timer) clearInterval(AI_LOG.timer); AI_LOG.timer = null; return Math.round((Date.now() - AI_LOG.t0) / 1000); }
+  function aiPanelReset() { aiTimerStop(); AI_LOG.lines = []; $('aiInfo').textContent = ''; $('aiLog').textContent = ''; $('aiLog').style.display = 'none'; $('reportArea').innerHTML = ''; }
+  const chainText = (st, kind) => (st.models && st.models[kind] ? st.models[kind].join(' → ') : '서버 설정 순서');
+  // 현재 화면이 sid 설문이 아니면 UI 갱신을 건너뜀
+  const still = sid => sid === SID;
   $('aiSummarize').onclick = async () => {
     const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI를 쓸 수 없습니다.\n' + (st.error ? '서버 응답: ' + st.error + '\n\n새 Code.gs를 붙여 넣은 뒤 "배포 > 배포 관리 > 편집 > 새 버전 > 배포"를 했는지 확인하세요. 편집기에서 testGemini가 성공해도 웹 앱 주소는 마지막으로 배포한 버전의 코드를 실행합니다.' : 'Apps Script 스크립트 속성에 GEMINI_API_KEY를 넣고 새 버전으로 배포하세요.'));
     const list = filteredResponses();
     const textQs = CUR.questions.filter(q => ['short', 'long', 'text'].includes(q.type));
     if (!textQs.length) return Modal.alert('주관식 문항이 없습니다.');
     if (!await Modal.confirm(`주관식 ${textQs.length}개 문항의 응답(${list.length}건 기준)을 AI로 요약할까요?\n이름·이메일은 보내지 않고 답변 내용만 보냅니다. 결과는 설문에 저장되어 다시 열어도 유지됩니다.`)) return;
-    $('aiSummarize').disabled = true; const summary = Object.assign({}, (CUR.ai || {}).summary || {}); let done = 0, lastModel = '';
-    for (const q of textQs) {
+    const sid = SID, cur = CUR, base = CUR.ai;
+    $('aiSummarize').disabled = true; const summary = Object.assign({}, (base || {}).summary || {}); let done = 0, lastModel = '', firstDone = null;
+    aiLog(`주관식 요약 시작: ${textQs.length}개 문항, 응답 ${list.length}건 · 모델 순서 ${chainText(st, 'lite')}`);
+    for (const [i, q] of textQs.entries()) {
       const answers = list.map(r => r.answers?.[q.id]).filter(a => typeof a === 'string' && a.trim());
-      $('aiInfo').textContent = `AI 요약 중… ${q.title} (${answers.length}건)`;
-      if (!answers.length) { delete summary[q.id]; continue; }
+      if (!answers.length) { delete summary[q.id]; if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 답변 없음 → 건너뜀`); continue; }
+      if (still(sid)) aiTimerStart(`AI 요약 중 (${i + 1}/${textQs.length}) ${q.title.slice(0, 30)} · ${answers.length}건`);
       try {
-        const { model, result } = await AiClient.run('summarize', { title: CUR.title, question: q.title, answers: answers.slice(0, 500) });
-        summary[q.id] = { result, model, at: Date.now(), count: answers.length }; lastModel = model; done++;
-      } catch (err) { await Modal.alert(`"${q.title}" 요약 실패: ${err.message}`); }
+        const { model, result } = await AiClient.run('summarize', { title: cur.title, question: q.title, answers: answers.slice(0, 500) });
+        const sec = aiTimerStop();
+        summary[q.id] = { result, model, at: Date.now(), count: answers.length }; lastModel = model; done++; if (!firstDone) firstDone = q.id;
+        if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 완료 · ${model} · ${sec}초 · 주제 ${(result.themes || []).length}개`);
+      } catch (err) { aiTimerStop(); if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 실패: ${err.message}`); await Modal.alert(`"${q.title}" 요약 실패: ${err.message}`); }
     }
-    try { await saveAi({ summary }); } catch (err) { await Modal.alert('요약 저장 실패: ' + err.message); }
-    $('aiInfo').textContent = done ? `AI 요약 ${done}개 문항 완료 (${lastModel})` : ''; $('aiSummarize').disabled = false; renderCharts();
+    try { await saveAiTo(sid, base, { summary }); } catch (err) { await Modal.alert('요약 저장 실패: ' + err.message); }
+    $('aiSummarize').disabled = false;
+    if (!still(sid)) return;   // 진행 중 다른 설문으로 바꿨으면 화면은 건드리지 않음
+    $('aiInfo').textContent = done ? `AI 요약 ${done}개 문항 완료 (${lastModel})` : '';
+    renderCharts();
+    // 결과가 나온 첫 문항 위치로 화면 이동
+    if (firstDone) { const blk = document.getElementById('t_' + firstDone)?.closest('.q-block') || document.querySelector(`[data-qblock="${firstDone}"]`); if (blk) blk.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   };
   // 통계 수치를 보고서용으로 정리
   function statsForReport() {
@@ -971,14 +1010,41 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     if (!responses.length) return Modal.alert('응답이 없어 보고서를 만들 수 없습니다.');
     const hasText = CUR.questions.some(q => ['short', 'long', 'text'].includes(q.type)), hasSum = CUR.ai && CUR.ai.summary && Object.keys(CUR.ai.summary).length;
     if (hasText && !hasSum && !await Modal.confirm('주관식 AI 요약이 아직 없습니다. 요약 없이 수치만으로 보고서를 만들까요? (취소 후 "AI 주관식 요약"을 먼저 실행하면 더 충실한 보고서가 됩니다)')) return;
-    $('aiReport').disabled = true; $('aiInfo').textContent = 'AI 보고서 작성 중… (20~60초)';
+    const sid = SID, cur = CUR, base = CUR.ai;
+    $('aiReport').disabled = true;
+    const data = statsForReport();
+    const textSection = textSummarySection(cur);   // 주관식 절은 AI 요약 결과를 그대로 사용(모델에 다시 쓰게 하지 않음)
+    aiLog(`보고서 작성 시작: 문항 ${data.questions.length}개, 응답 ${data.counts.응답합계}건${textSection ? ', 주관식 요약 ' + Object.keys(base.summary).length + '개 그대로 사용' : ''} · 모델 순서 ${chainText(st, 'flash')}`);
+    aiTimerStart('AI 보고서 작성 중');
     try {
-      const { model, result } = await AiClient.run('report', { data: statsForReport() });
-      await saveAi({ report: { result, model, at: Date.now() } });
-      $('aiInfo').textContent = `보고서 작성 완료 (${model})`; renderReport(); $('reportArea').scrollIntoView({ behavior: 'smooth' });
-    } catch (err) { $('aiInfo').textContent = ''; await Modal.alert('보고서 작성 실패: ' + err.message); }
+      const { model, result } = await AiClient.run('report', { data, textSummaryProvided: !!textSection });
+      const sec = aiTimerStop();
+      if (textSection) {
+        result.sections = (result.sections || []).filter(x => !/주관식|자유 ?의견|서술/.test(x.heading || ''));
+        const idx = result.sections.findIndex(x => /시사점|제안|결론/.test(x.heading || ''));
+        result.sections.splice(idx < 0 ? result.sections.length : idx, 0, textSection);
+      }
+      await saveAiTo(sid, base, { report: { result, model, at: Date.now() } });
+      if (!still(sid)) { $('aiReport').disabled = false; return; }
+      aiLog(`보고서 완료 · ${model} · ${sec}초 · 절 ${result.sections.length}개`);
+      $('aiInfo').textContent = `보고서 작성 완료 (${model}, ${sec}초)`; renderReport(); $('reportArea').scrollIntoView({ behavior: 'smooth' });
+    } catch (err) { aiTimerStop(); if (still(sid)) { aiLog('보고서 실패: ' + err.message); $('aiInfo').textContent = ''; } await Modal.alert('보고서 작성 실패: ' + err.message); }
     $('aiReport').disabled = false;
   };
+  // 저장된 주관식 AI 요약을 보고서 절 하나로 정리 (요약 본문·주제별 응답 수·대표 의견·개선 제안을 그대로 옮김)
+  function textSummarySection(sv) {
+    const sum = sv.ai && sv.ai.summary; if (!sum || !Object.keys(sum).length) return null;
+    const parts = [];
+    sv.questions.forEach((q, i) => {
+      const s = sum[q.id]; if (!s) return; const r = s.result;
+      let t = `${i + 1}. ${q.title} (응답 ${s.count}건)\n${r.summary || ''}`;
+      if ((r.themes || []).length) t += '\n' + r.themes.map(th => `- ${th.theme}: ${th.count}건` + ((th.quotes || []).length ? ` (예: “${th.quotes[0]}”)` : '')).join('\n');
+      if (r.sentiment && (r.sentiment.positive || r.sentiment.negative || r.sentiment.neutral)) t += `\n- 긍정 ${r.sentiment.positive || 0} · 부정 ${r.sentiment.negative || 0} · 중립 ${r.sentiment.neutral || 0}`;
+      if ((r.suggestions || []).length) t += '\n개선 제안\n' + r.suggestions.map(x => '- ' + x).join('\n');
+      parts.push(t);
+    });
+    return parts.length ? { heading: '주관식 의견 요약', body: parts.join('\n\n') } : null;
+  }
 
   function renderCharts() {
     try { renderChartsInner(); }
@@ -1066,7 +1132,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       } else {
         inner = `<div class="chart-wrap"><canvas id="c_${q.id}"></canvas></div><div class="tbl"><table id="t_${q.id}"></table></div>`;
       }
-      return `<div class="card q-block"><h3>${i + 1}. ${esc(q.title)}</h3>${inner}</div>`;
+      return `<div class="card q-block" data-qblock="${esc(q.id)}"><h3>${i + 1}. ${esc(q.title)}</h3>${inner}</div>`;
     }).join('');
 
     for (const q of CUR.questions) {
