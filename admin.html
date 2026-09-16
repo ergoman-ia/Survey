@@ -222,7 +222,6 @@
           <select id="groupFilter"><option value="">전체 소속</option></select>
           <button class="btn" id="aiSummarize" title="주관식 응답을 Gemini가 주제별로 요약">AI 주관식 요약</button>
           <button class="btn" id="aiReport" title="통계와 요약으로 결과 보고서 작성">AI 보고서 작성</button>
-          <label class="muted" title="lite 모델이 쓴 절을 flash 모델이 문장만 다듬습니다. 시간이 더 걸리며, 실패하면 원문을 그대로 씁니다" style="white-space:nowrap"><input type="checkbox" id="aiPolish"> flash로 다듬기</label>
           <button class="btn sec" id="printBtn">인쇄 / PDF 저장</button>
         </div>
       </div>
@@ -1066,12 +1065,11 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const data = statsForReport();
     const textSection = textSummarySection(cur);   // 주관식 절은 AI 요약 결과를 그대로 사용(모델에 다시 쓰게 하지 않음)
     if (textSection) data.questions.forEach(q => { if (q.AI요약) q.AI요약 = { summary: q.AI요약.summary, themes: (q.AI요약.themes || []).map(t => t.theme + ' ' + t.count + '건') }; });   // 모델에는 요약문·주제명만 보내 입력을 줄임
-    const polish = $('aiPolish').checked;
-    // 보고서를 한 번에 쓰지 않고 3부분으로 나눠 짧게 요청합니다(각 10~30초). 한 요청이 길어지면 회사 네트워크·프록시가 연결을 끊어
-    // "Failed to fetch"로 실패하기 때문입니다. 각 부분은 lite 모델이 먼저 쓰고, 원하면 flash 모델이 문장만 다듬습니다.
+    // 보고서를 한 번에 쓰지 않고 3부분으로 나눠 짧게, 동시에 요청합니다(각 10~30초). 한 요청이 길어지면 회사 네트워크·프록시가 연결을 끊어
+    // "Failed to fetch"로 실패하기 때문입니다. 모든 부분은 lite 계열 모델이 씁니다.
     const PARTS = [['overview', '조사 개요·응답 현황'], ['results', '주요 결과'], ['insights', '시사점 및 개선 제안']];
-    const totalSteps = PARTS.length + (polish ? 4 : 0);
-    aiLogClear(); aiLog(`보고서 작성 시작: 문항 ${data.questions.length}개, 응답 ${data.counts.응답합계}건${textSection ? ', 주관식 요약 ' + Object.keys(base.summary).length + '개 그대로 사용' : ''} · ${PARTS.length}부분으로 나눠 작성(lite: ${chainText(st, 'lite')})${polish ? ' → flash로 다듬기(' + chainText(st, 'flash') + ')' : ''}`);
+    const totalSteps = PARTS.length;
+    aiLogClear(); aiLog(`보고서 작성 시작: 문항 ${data.questions.length}개, 응답 ${data.counts.응답합계}건${textSection ? ', 주관식 요약 ' + Object.keys(base.summary).length + '개 그대로 사용' : ''} · ${PARTS.length}부분으로 나눠 동시 작성(모델 순서 ${chainText(st, 'lite')})`);
     const t0 = Date.now(); let step = 0; const models = new Set();
     const elapsed = () => Math.round((Date.now() - t0) / 1000);
     try {
@@ -1085,28 +1083,14 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
         const { model, result, attempts } = await AiClient.run('report_part', { part, data: partData });
         doneParts++; const n = ++step; models.add(model);
         if (still(sid)) { AI_LOG.label = `AI 보고서 작성 중 — ${PARTS.length}부분 동시 요청 (${doneParts}/${PARTS.length} 완료)`; aiLog(`(${n}/${totalSteps}) ${label} 완료 · ${model} · ${Math.round((Date.now() - ts) / 1000)}초` + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : '')); }
-        return (result.sections || []).map(x => ({ heading: x.heading, body: x.body }));
+        // 모델이 sections 없이 배열만 돌려주거나 다른 키를 쓰는 경우도 받아 줌
+        const list = Array.isArray(result) ? result : (result && (result.sections || result.items || result.parts)) || [];
+        if (!list.length && still(sid)) aiLog(`  ${label}: 모델이 절을 돌려주지 않았습니다 (응답: ${JSON.stringify(result).slice(0, 120)})`);
+        return list.filter(x => x && x.heading && x.body).map(x => ({ heading: x.heading, body: x.body }));
       }));
       aiTimerStop();
       const sections = partResults.flat();
-      // 2단계(선택): 절마다 flash가 문장만 다듬기 — 역시 동시에. 원문에 없는 수치가 생기거나 길이가 1.5배를 넘으면 내용이 덧붙은 것으로 보고 원문을 유지
-      if (polish) {
-        if (still(sid)) aiTimerStart(`AI 보고서 다듬는 중 — ${sections.length}개 절 동시 요청`);
-        const nums = t => new Set((t.match(/\d+(?:[.,]\d+)?/g) || []));
-        await Promise.all(sections.map(async sec => {
-          const ts = Date.now(); let n = 0;
-          try {
-            const { model, result, attempts } = await AiClient.run('polish', { heading: sec.heading, body: sec.body });
-            n = ++step;
-            const out = result && result.body ? result.body.trim() : '';
-            const extra = [...nums(out)].filter(n => !nums(sec.body).has(n));
-            const tooLong = out.length > sec.body.length * 1.5;
-            if (out && !extra.length && !tooLong) { sec.body = out; models.add(model); if (still(sid)) aiLog(`(${n}/${totalSteps}) "${sec.heading}" 다듬기 완료 · ${model} · ${Math.round((Date.now() - ts) / 1000)}초` + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : '')); }
-            else if (still(sid)) aiLog(`(${n}/${totalSteps}) "${sec.heading}" 다듬기 결과를 버리고 원문 사용 — ${!out ? '빈 응답' : extra.length ? '원문에 없는 수치 ' + extra.slice(0, 3).join(', ') : '길이가 ' + Math.round(out.length / sec.body.length * 100) + '%로 늘어남'} (${model})`);
-          } catch (err) { n = n || ++step; if (still(sid)) aiLog(`(${n}/${totalSteps}) "${sec.heading}" 다듬기 실패 → 원문 사용: ${err.message}`); }
-        }));
-        aiTimerStop();
-      }
+      if (!sections.length) throw new Error('세 부분 모두 절이 만들어지지 않았습니다. 로그의 모델 응답을 확인하세요.');
       if (textSection) { const idx = sections.findIndex(x => /시사점|제안|결론/.test(x.heading || '')); sections.splice(idx < 0 ? sections.length : idx, 0, textSection); }
       const result = { title: `${cur.title} 결과 보고서`, sections };
       const model = [...models].join(' + '), total = elapsed();
