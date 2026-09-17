@@ -631,16 +631,45 @@
       result.items = (result.items || []).filter(it => !dropped.includes(it));
       log('aiReviewLog', `응답 도착 · ${used} · ${sec}초 · 지적 ${result.items.length}건` + (dropped.length ? ` (척도 중간 설명 관련 ${dropped.length}건은 표준 설계이므로 제외)` : '') + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : ''));
       const sev = { high: ['b-bad', '중요'], medium: ['b-warn', '권장'], low: ['b-gray', '참고'] };
+      // 모델이 준 fix(고친 뒤의 값)를 문항에 실제로 적용할 변경 목록으로 정리 — 예전 응답(rewrite만 있음)도 title 변경으로 받아 줌
+      const FIELD = { title: '질문 문구', description: '설명', options: '선택지', allowOther: '기타 직접 입력', labels: '척도 양 끝 설명', min: '최솟값', max: '최댓값', required: '필수 여부', type: '유형' };
+      const show = (k, v) => k === 'options' ? (v || []).join(' / ') : k === 'labels' ? `${(v || [])[0] || ''} ~ ${(v || [])[1] || ''}` : k === 'type' ? (SURVEY_TYPES[v] ? SURVEY_TYPES[v].name : v) : typeof v === 'boolean' ? (v ? '예' : '아니요') : String(v ?? '');
+      const changesOf = (it, q) => {
+        if (!q) return [];
+        const fix = Object.assign({}, it.fix || {}); if (!fix.title && it.rewrite && it.rewrite.trim() && it.rewrite.trim() !== q.title.trim()) fix.title = it.rewrite.trim();
+        const out = [];
+        for (const [k, v] of Object.entries(fix)) {
+          if (v == null || !(k in FIELD)) continue;
+          if (k === 'options' && !(q.type === 'single' || q.type === 'multi' || q.type === 'dropdown') && fix.type !== 'single' && fix.type !== 'multi' && fix.type !== 'dropdown') continue;
+          if (k === 'labels' && q.type !== 'scale' && fix.type !== 'scale') continue;
+          if ((k === 'min' || k === 'max') && q.type !== 'scale' && q.type !== 'rating' && fix.type !== 'scale' && fix.type !== 'rating') continue;
+          const cur = q[k]; if (JSON.stringify(cur) === JSON.stringify(v)) continue;
+          if (k === 'options' && !(Array.isArray(v) && v.filter(o => String(o).trim()).length)) continue;
+          out.push({ k, before: show(k, cur), after: show(k, v), value: v });
+        }
+        return out;
+      };
+      const plans = (result.items || []).map(it => changesOf(it, model.questions[it.index]));
       $('aiReview').innerHTML = `<div class="hint"><b>총평</b> ${esc(result.overall || '')} <span class="muted">(${esc(used)})</span></div>` +
         ((result.items || []).length ? (result.items || []).map((it, k) => {
-          const q = model.questions[it.index]; const [cls, label] = sev[it.severity] || sev.low;
+          const q = model.questions[it.index]; const [cls, label] = sev[it.severity] || sev.low; const ch = plans[k];
           return `<div class="q-card" style="border-left-color:${it.severity === 'high' ? 'var(--bad)' : it.severity === 'medium' ? 'var(--warn)' : 'var(--line)'}">
             <div><span class="badge ${cls}" style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px">${label}</span> <b>${it.index + 1}번</b> ${esc(q ? q.title : '')}</div>
             <div style="margin-top:4px">${esc(it.issue)}</div>
             ${it.suggestion ? `<div class="muted" style="margin-top:2px">제안: ${esc(it.suggestion)}</div>` : ''}
-            ${it.rewrite && q ? `<div class="row" style="margin-top:6px"><span class="muted">고친 문구:</span> <i>${esc(it.rewrite)}</i> <button class="btn sm sec" data-apply="${k}">이 문구로 바꾸기</button></div>` : ''}
+            ${ch.length ? `<div style="margin-top:6px;font-size:13px">${ch.map(c => `<div><span class="muted">${FIELD[c.k]}:</span> <s style="color:#999">${esc(c.before)}</s> → <b>${esc(c.after)}</b></div>`).join('')}<div class="row" style="margin-top:6px"><button class="btn sm sec" data-apply="${k}">제안대로 고치기</button></div></div>`
+              : (q ? '<div class="muted" style="margin-top:4px">자동으로 고칠 값이 없어 직접 수정해야 합니다.</div>' : '')}
           </div>`; }).join('') : '<p class="muted">특별히 고칠 문항이 없습니다.</p>');
-      $('aiReview').querySelectorAll('[data-apply]').forEach(b => b.onclick = () => { const it = result.items[+b.dataset.apply]; const q = model.questions[it.index]; if (!q) return; q.title = it.rewrite; delete q.draft; markDirty(); renderQuestions(); renderPreview(); b.textContent = '적용됨'; b.disabled = true; });
+      $('aiReview').querySelectorAll('[data-apply]').forEach(b => b.onclick = () => {
+        const k = +b.dataset.apply, it = result.items[k], q = model.questions[it.index]; if (!q) return;
+        const ch = plans[k]; const typeChange = ch.find(c => c.k === 'type');
+        if (typeChange) changeType(q, typeChange.value);
+        for (const c of ch) { if (c.k === 'type') continue; q[c.k] = Array.isArray(c.value) ? c.value.map(String) : c.value; }
+        if (q.type === 'scale') { q.labels = (q.labels || ['', '']).slice(0, 2); while (q.labels.length < 2) q.labels.push(''); if (q.min >= q.max) { q.min = 1; q.max = Math.max(2, q.max || 5); } }
+        if (q.options) q.options = q.options.map(o => String(o).trim()).filter(Boolean);
+        delete q.draft; markDirty(); reviewSig = model.questions.map(x => x.id + ':' + x.type).join('|'); renderQuestions(); renderPreview();
+        b.textContent = '적용됨'; b.disabled = true;
+      });
       busy($('aiReviewMsg'), false, `${(result.items || []).length}건`);
     } catch (err) { stop(); busy($('aiReviewMsg'), false, ''); log('aiReviewLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert('검토 실패: ' + AiClient.shortReason(err.message)); }
     $('aiReviewBtn').disabled = false;
