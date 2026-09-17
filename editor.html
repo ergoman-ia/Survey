@@ -624,11 +624,23 @@
     logClear('aiReviewLog'); log('aiReviewLog', `검토 요청: 문항 ${model.questions.length}개 · 모델 순서 ${chainText(st, 'lite')}`);
     const stop = timer($('aiReviewMsg'), '검토 중');
     try {
-      const { model: used, result, attempts } = await AiClient.run('review', { title: model.title, questions: model.questions.map(q => ({ type: q.type, title: q.title, description: q.description || '', required: !!q.required, options: q.options, min: q.min, max: q.max, labels: q.labels })) });
+      const { model: used, result, attempts } = await AiClient.run('review', { title: model.title, questions: model.questions.map((q, i) => ({ index: i, type: q.type, title: q.title, description: q.description || '', required: !!q.required, options: q.options, allowOther: !!q.allowOther, min: q.min, max: q.max, labels: q.labels })) });
       const sec = stop();
-      // 척도 중간 값 설명이 없다는 지적은 표준 설계에 대한 것이므로 걸러냄
-      const dropped = (result.items || []).filter(it => /중간\s*(값|설명|점|단계)|2,?\s*3,?\s*4점|양\s*끝.*(만|생략)|끝\s*값.*중간/.test((it.issue || '') + ' ' + (it.suggestion || '')));
-      result.items = (result.items || []).filter(it => !dropped.includes(it));
+      // 문항 번호 검증: 모델이 1부터 세거나 번호를 틀리면 원문 질문(original)으로 다시 찾음. 못 찾으면 그 지적은 버림
+      const norm = t => String(t || '').replace(/\s+/g, ' ').trim();
+      const bad = [];
+      (result.items || []).forEach(it => {
+        const q = model.questions[it.index];
+        if (it.original && (!q || norm(q.title) !== norm(it.original))) {
+          const j = model.questions.findIndex(x => norm(x.title) === norm(it.original));
+          if (j >= 0) it.index = j; else if (!q) bad.push(it);
+        } else if (!q) bad.push(it);
+      });
+      // 표준 설계를 문제 삼는 지적은 걸러냄: 척도 중간 값 설명 없음, 5점 척도 자체, 양 끝 설명만 있음, 주관식에 선택지 없음
+      const STANDARD = /중간\s*(값|설명|점|단계)|2,?\s*3,?\s*4점|양\s*끝.*(만|생략)|끝\s*값.*중간|5점 척도(를|는).*(권장|고려|변경)|주관식.*선택지|선택지.*주관식|응답 예시가 없/;
+      const dropped = (result.items || []).filter(it => !bad.includes(it) && STANDARD.test((it.issue || '') + ' ' + (it.suggestion || '')));
+      result.items = (result.items || []).filter(it => !dropped.includes(it) && !bad.includes(it));
+      if (bad.length) log('aiReviewLog', `문항 번호를 확인할 수 없는 지적 ${bad.length}건은 제외했습니다.`);
       log('aiReviewLog', `응답 도착 · ${used} · ${sec}초 · 지적 ${result.items.length}건` + (dropped.length ? ` (척도 중간 설명 관련 ${dropped.length}건은 표준 설계이므로 제외)` : '') + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : ''));
       const sev = { high: ['b-bad', '중요'], medium: ['b-warn', '권장'], low: ['b-gray', '참고'] };
       // 모델이 준 fix(고친 뒤의 값)를 문항에 실제로 적용할 변경 목록으로 정리 — 예전 응답(rewrite만 있음)도 title 변경으로 받아 줌
@@ -637,6 +649,17 @@
       const changesOf = (it, q) => {
         if (!q) return [];
         const fix = Object.assign({}, it.fix || {}); if (!fix.title && it.rewrite && it.rewrite.trim() && it.rewrite.trim() !== q.title.trim()) fix.title = it.rewrite.trim();
+        if (fix.title) fix.title = String(fix.title).replace(/^\s*(\d+|[①-⑳]|Q\d*)[.)]?\s*/i, '').trim();   // 모델이 붙인 문항 번호 제거
+        if (fix.title && fix.title === q.title.trim()) delete fix.title;
+        if (fix.description !== undefined && !String(fix.description).trim()) delete fix.description;
+        // 선택지: 지적이 중복·삭제·정리에 관한 것이 아니면 기존 선택지를 지우지 않고 빠진 것만 보탬(모델이 일부만 돌려줘도 응답 데이터가 깨지지 않음)
+        if (Array.isArray(fix.options) && Array.isArray(q.options)) {
+          const t = (it.issue || '') + ' ' + (it.suggestion || '');
+          const clean = fix.options.map(o => String(o).trim()).filter(Boolean);
+          if (!/중복|삭제|제거|정리|통합|합치|줄이|겹치|상호 ?배타/.test(t)) { const merged = q.options.slice(); clean.forEach(o => { if (!merged.includes(o)) merged.push(o); }); fix.options = merged; }
+          else fix.options = clean;
+          if (fix.options.length < 2) delete fix.options;
+        }
         const out = [];
         for (const [k, v] of Object.entries(fix)) {
           if (v == null || !(k in FIELD)) continue;
@@ -649,7 +672,10 @@
         }
         return out;
       };
-      const plans = (result.items || []).map(it => changesOf(it, model.questions[it.index]));
+      // 지적 내용과 무관한 변경(예: 설명이 빠졌다는 지적에 유형·범위까지 바꾸기)은 기본으로 끔 — 사용자가 체크해서 켤 수 있음
+      const RELEVANT = { type: /유형|형식|객관식|체크박스|드롭다운|단답|장문|주관식으로|별점으로|배율로/, min: /범위|최솟값|최소값|시작 값|0점|1점부터/, max: /범위|최댓값|최대값|단계|점 척도|\d점 만점|별 개수/, options: /선택지|보기|옵션|항목이|중복|누락|상호 ?배타|기타/, labels: /설명|양 ?끝|라벨|레이블|기준|앵커|방향/, allowOther: /기타|직접 입력/, required: /필수|선택 사항|응답 강제/, title: /문구|질문|표현|용어|이중|유도|편향|모호|어색|길|짧/, description: /설명|안내/ };
+      const relevant = (it, k) => { const t = (it.issue || '') + ' ' + (it.suggestion || ''); return k === 'title' || k === 'description' ? true : RELEVANT[k].test(t); };
+      const plans = (result.items || []).map(it => changesOf(it, model.questions[it.index]).map(c => ({ ...c, on: relevant(it, c.k) })));
       $('aiReview').innerHTML = `<div class="hint"><b>총평</b> ${esc(result.overall || '')} <span class="muted">(${esc(used)})</span></div>` +
         ((result.items || []).length ? (result.items || []).map((it, k) => {
           const q = model.questions[it.index]; const [cls, label] = sev[it.severity] || sev.low; const ch = plans[k];
@@ -657,12 +683,14 @@
             <div><span class="badge ${cls}" style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px">${label}</span> <b>${it.index + 1}번</b> ${esc(q ? q.title : '')}</div>
             <div style="margin-top:4px">${esc(it.issue)}</div>
             ${it.suggestion ? `<div class="muted" style="margin-top:2px">제안: ${esc(it.suggestion)}</div>` : ''}
-            ${ch.length ? `<div style="margin-top:6px;font-size:13px">${ch.map(c => `<div><span class="muted">${FIELD[c.k]}:</span> <s style="color:#999">${esc(c.before)}</s> → <b>${esc(c.after)}</b></div>`).join('')}<div class="row" style="margin-top:6px"><button class="btn sm sec" data-apply="${k}">제안대로 고치기</button></div></div>`
+            ${ch.length ? `<div style="margin-top:6px;font-size:13px">${ch.map((c, j) => `<label style="display:block;cursor:pointer"><input type="checkbox" data-chg="${k}:${j}"${c.on ? ' checked' : ''}> <span class="muted">${FIELD[c.k]}:</span> <s style="color:#999">${esc(c.before)}</s> → <b>${esc(c.after)}</b>${c.on ? '' : ' <span class="muted">(지적 내용과 무관해 보여 꺼 둠)</span>'}</label>`).join('')}<div class="row" style="margin-top:6px"><button class="btn sm sec" data-apply="${k}">체크한 항목만 고치기</button></div></div>`
               : (q ? '<div class="muted" style="margin-top:4px">자동으로 고칠 값이 없어 직접 수정해야 합니다.</div>' : '')}
           </div>`; }).join('') : '<p class="muted">특별히 고칠 문항이 없습니다.</p>');
       $('aiReview').querySelectorAll('[data-apply]').forEach(b => b.onclick = () => {
         const k = +b.dataset.apply, it = result.items[k], q = model.questions[it.index]; if (!q) return;
-        const ch = plans[k]; const typeChange = ch.find(c => c.k === 'type');
+        const ch = plans[k].filter((c, j) => { const cb = $('aiReview').querySelector(`[data-chg="${k}:${j}"]`); return cb ? cb.checked : c.on; });
+        if (!ch.length) return Modal.alert('고칠 항목을 하나 이상 체크하세요.');
+        const typeChange = ch.find(c => c.k === 'type');
         if (typeChange) changeType(q, typeChange.value);
         for (const c of ch) { if (c.k === 'type') continue; q[c.k] = Array.isArray(c.value) ? c.value.map(String) : c.value; }
         if (q.type === 'scale') { q.labels = (q.labels || ['', '']).slice(0, 2); while (q.labels.length < 2) q.labels.push(''); if (q.min >= q.max) { q.min = 1; q.max = Math.max(2, q.max || 5); } }
