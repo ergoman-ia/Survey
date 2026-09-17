@@ -50,7 +50,7 @@
   .tbl { overflow-x: auto; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
   .b-ok { background: #e3f6ea; color: var(--ok); } .b-warn { background: #fff3dc; color: var(--warn); }
-  .b-bad { background: #fde3e3; color: var(--bad); } .b-gray { background: #eef0f4; color: var(--muted); }
+  .b-bad { background: #fde3e3; color: var(--bad); } .b-gray { background: #eef0f4; color: var(--muted); } .b-open { background: #e3f0fb; color: #1f5fbf; }
   .muted { color: var(--muted); font-size: 12px; }
   .q-block { margin-bottom: 26px; }
   .q-block h3 { font-size: 15px; margin: 0 0 8px; }
@@ -429,7 +429,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   }
   async function refreshSurveys() {
     surveys = await store.list(true);
-    $('surveySel').innerHTML = surveys.map(x => `<option value="${esc(x.id)}">${esc(x.title || '(제목 없음)')}${x.status === 'archived' ? ' [보관]' : ''}</option>`).join('') || '<option value="">(설문 없음)</option>';
+    $('surveySel').innerHTML = surveys.map(x => `<option value="${esc(x.id)}">${modeTag(x)} ${esc(x.title || '(제목 없음)')}${x.status === 'archived' ? ' [보관]' : ''}</option>`).join('') || '<option value="">(설문 없음)</option>';
     if (SID) $('surveySel').value = SID;
   }
   async function selectSurvey(id) {
@@ -466,6 +466,9 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     }, err => { console.error(err); $('respCount').textContent = '응답을 읽지 못했습니다: ' + err.message; $('aiInfo').textContent = '응답 읽기 오류: ' + err.message + ' (Firestore 규칙의 responses read 허용을 확인하세요)'; }));
     renderSetup();
   }
+  // 응답 방식 표지: 제목 앞에 붙임 — [공개] 안내 페이지·QR로 누구나 응답 / [메일 전용] 메일 링크로만 응답
+  const modeTag = sv => sv.openEnabled === false ? '[메일 전용]' : '[공개]';
+  const modeBadge = sv => sv.openEnabled === false ? '<span class="badge b-gray">메일 전용</span>' : '<span class="badge b-open">공개</span>';
   // 상태 표시: 진행 중(초록) / 마감(빨강) / 보관(회색) — index.html과 같은 기준
   const isClosedSv = sv => !!sv.forceClosed || (sv.closeAfterDeadline && sv.deadline && new Date() > new Date(sv.deadline + 'T23:59:59'));
   const stateOf = sv => sv.status === 'archived' ? 'archived' : isClosedSv(sv) ? 'closed' : 'open';
@@ -477,6 +480,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const st = stateOf(CUR); el.className = 'stat state st-' + st;
     $('sState').textContent = STATE_LABEL[st];
     $('sStateSub').textContent = st === 'archived' ? '응답 받지 않음' : CUR.forceClosed ? '강제 마감' + (CUR.forceClosedAt ? ' ' + fmtDate(CUR.forceClosedAt) : '') + (CUR.forceClosedReason ? ' · ' + CUR.forceClosedReason.slice(0, 30) + (CUR.forceClosedReason.length > 30 ? '…' : '') : '') : CUR.deadline ? '마감 ' + fmtDeadline(CUR.deadline) : '마감일 없음';
+    $('sStateSub').textContent += ' · ' + (CUR.openEnabled === false ? '메일 전용' : '공개');
     $('sStateSub').title = (CUR.closeLog || []).map(l => `${fmt(l.at)} ${l.action === 'close' ? '강제 마감' : '다시 시작'}${l.reason ? ': ' + l.reason : ''}`).join('\n');
   }
   // 설문이 하나도 없을 때: 예전 구조 데이터가 있으면 가져오기, 아니면 새 설문 만들기 안내
@@ -604,7 +608,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       body.innerHTML = rows.map(({ sv, rec, res, last }, i) => {
         const st = stateOf(sv), mail = res.filter(r => channelOf(r) === 'email').length;
         return `<tr data-sid="${esc(sv.id)}" style="cursor:pointer${sv.id === SID ? ';background:#fff8e6' : ''}">
-          <td class="num">${i + 1}</td><td>${esc(sv.title || '(제목 없음)')}${sv.isTest ? ' <span class="badge b-warn">TEST</span>' : ''}</td><td><code>${esc(sv.id)}</code></td>
+          <td class="num">${i + 1}</td><td>${modeBadge(sv)} ${esc(sv.title || '(제목 없음)')}${sv.isTest ? ' <span class="badge b-warn">TEST</span>' : ''}</td><td><code>${esc(sv.id)}</code></td>
           <td><span class="st-badge st-${st}">${STATE_LABEL[st]}</span></td><td>${sv.createdAtMs ? fmtDate(sv.createdAtMs) : ''}</td><td>${fmtDeadline(sv.deadline)}</td>
           <td class="num">${(sv.questions || []).length}</td><td class="num">${rec.length}</td><td class="num">${rec.filter(r => r.sendStatus === 'sent').length}</td><td class="num">${rec.filter(r => r.openedAt).length}</td><td class="num">${rec.filter(r => r.submittedAt).length}</td>
           <td class="num">${res.length} (${mail}/${res.length - mail})</td><td>${last ? fmtDate(last) : ''}</td>

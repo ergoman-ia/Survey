@@ -38,7 +38,7 @@
   .row .t:hover { color: var(--c); }
   .row .m { font-size: 13px; color: var(--muted); margin-top: 2px; }
   .badge { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; vertical-align: middle; margin-right: 6px; }
-  .b-open { background: #e3f6ea; color: var(--ok); } .b-closed { background: #eef0f4; color: var(--muted); }
+  .b-open { background: #e3f6ea; color: var(--ok); } .b-closed { background: #eef0f4; color: var(--muted); } .b-pub { background: #e3f0fb; color: var(--c); }
   .btn { display: inline-block; padding: 9px 16px; border-radius: 8px; background: var(--c); color: #fff; font-weight: 600; text-decoration: none; font-size: 14px; white-space: nowrap; }
   .btn.sec { background: #fff; color: var(--c); border: 1px solid var(--c); }
   .btn.off { background: #c5ccd6; pointer-events: none; }
@@ -151,9 +151,10 @@
     if (sv.openEnabled === false) return `<span class="btn off${big ? ' big' : ''}">메일 링크로만 응답</span>`;
     return `<a class="btn${big ? ' big' : ''}" href="survey.html?s=${encodeURIComponent(sv.id)}&from=list">설문 응답하기</a>`;
   }
+  const modeBadge = sv => sv.openEnabled === false ? '<span class="badge b-closed">메일 전용</span>' : '<span class="badge b-pub">공개</span>';
   function badge(sv) {
     const st = stateOf(sv);
-    return st === 'open' ? '<span class="badge b-open">진행 중</span>' : st === 'closed' ? '<span class="badge b-closed">마감</span>' : '<span class="badge b-closed">보관</span>';
+    return (st === 'open' ? '<span class="badge b-open">진행 중</span>' : st === 'closed' ? '<span class="badge b-closed">마감</span>' : '<span class="badge b-closed">보관</span>');
   }
 
   // 상세 화면 (설문 하나)
@@ -164,7 +165,7 @@
     app.innerHTML = `
       ${backLink ? '<p style="margin:0 0 10px"><a href="index.html" style="display:inline-block;color:#c85a00;font-weight:700;font-size:14px;text-decoration:none;background:#fdebd9;border:1px solid #f0c9a4;border-radius:8px;padding:6px 12px">← 설문 목록으로</a></p>' : ''}
       <div class="card detail">
-        <div>${badge(sv)}</div>
+        <div>${modeBadge(sv)}${badge(sv)}</div>
         <h2>${esc(sv.title)}</h2>
         <p class="desc">${esc(sv.description || '')}</p>
         <div class="meta">${meta}</div>
@@ -207,8 +208,8 @@
   function rowsHtml(page) {
     return page.map(sv => `<div class="row">
               <div>
-                <a class="t" href="index.html?s=${encodeURIComponent(sv.id)}">${esc(sv.title || '(제목 없음)')}</a>
-                <div class="m">${badge(sv)}${sv.deadline ? '마감 ' + esc(sv.deadline) + ' · ' : ''}${sv.questions.length}문항${sv.createdAtMs ? ' · 만든 날 ' + fmtDate(sv.createdAtMs) : ''}${sv.openEnabled === false ? ' · 메일 링크 전용' : ''}</div>
+                ${modeBadge(sv)}<a class="t" href="index.html?s=${encodeURIComponent(sv.id)}">${esc(sv.title || '(제목 없음)')}</a>
+                <div class="m">${badge(sv)}${sv.deadline ? '마감 ' + esc(sv.deadline) + ' · ' : ''}${sv.questions.length}문항${sv.createdAtMs ? ' · 만든 날 ' + fmtDate(sv.createdAtMs) : ''}</div>
               </div>
               <div>${answerButton(sv, false)} <a class="btn sec" href="index.html?s=${encodeURIComponent(sv.id)}">문항 보기</a></div>
             </div>`).join('') || `<div class="empty">${all.length ? '조건에 맞는 설문이 없습니다.' : '아직 설문이 없습니다. 설문 편집 페이지에서 설문을 만들면 이곳에 표시됩니다.'}</div>`;

@@ -110,7 +110,7 @@
           <div class="row">
             <label>마감일 <input type="date" id="sDeadline"></label>
             <label class="chk"><input type="checkbox" id="sClose"> 마감일 이후 제출 막기</label>
-            <label class="chk"><input type="checkbox" id="sOpen"> 공개 응답 허용(메일 링크 없이도 응답)</label>
+            <label class="chk" title="켜면 [공개]: 설문 안내 페이지·QR 코드로 누구나 응답할 수 있음. 끄면 [메일 전용]: 메일로 보낸 개인 링크로만 응답"><input type="checkbox" id="sOpen"> 공개 응답 허용 <span class="muted">(켜면 [공개], 끄면 [메일 전용] — 제목 앞에 표시됨)</span></label>
           </div>
           <div class="row">
             <span class="muted">설문 ID: <code id="sId">(저장하면 만들어집니다)</code></span>
@@ -257,7 +257,7 @@
   }
   async function refreshList() {
     surveys = await store.list(true);
-    $('surveySel').innerHTML = surveys.map(x => `<option value="${esc(x.id)}">${esc(x.title || '(제목 없음)')}${x.status === 'archived' ? ' [보관]' : ''}</option>`).join('') + '<option value="__new">+ 새 설문</option>';
+    $('surveySel').innerHTML = surveys.map(x => `<option value="${esc(x.id)}">${x.openEnabled === false ? '[메일 전용]' : '[공개]'} ${esc(x.title || '(제목 없음)')}${x.status === 'archived' ? ' [보관]' : ''}</option>`).join('') + '<option value="__new">+ 새 설문</option>';
     $('surveySel').value = currentId || '__new';
   }
   async function openSurvey(id) {
