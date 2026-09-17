@@ -81,7 +81,7 @@
   const typeName = { single: '객관식', multi: '체크박스', dropdown: '드롭다운', scale: '선형 배율', rating: '별점', short: '단답형', long: '장문형' };
   const PAGE = 20;
 
-  const isClosed = sv => sv.closeAfterDeadline && sv.deadline && new Date() > new Date(sv.deadline + 'T23:59:59');
+  const isClosed = sv => !!sv.forceClosed || (sv.closeAfterDeadline && sv.deadline && new Date() > new Date(sv.deadline + 'T23:59:59'));   // forceClosed: 관리 화면의 강제 마감
   // 상태: open(응답 가능) / closed(마감) / archived(보관)
   const stateOf = sv => sv.status === 'archived' ? 'archived' : isClosed(sv) ? 'closed' : 'open';
   const fmtDate = ms => ms ? new Date(ms).toLocaleDateString('ko-KR') : '';

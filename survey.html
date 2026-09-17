@@ -79,6 +79,7 @@
   }
 
   function isClosed() {
+    if (SURVEY.forceClosed) return true;   // 관리 화면에서 강제 마감
     if (!SURVEY.closeAfterDeadline || !SURVEY.deadline) return false;
     const end = new Date(SURVEY.deadline + 'T23:59:59');
     return new Date() > end;

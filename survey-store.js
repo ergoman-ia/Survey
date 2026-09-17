@@ -87,7 +87,7 @@ const SurveyStore = {
   async listOpen() {
     const all = await this.list(false);
     const now = new Date();
-    return all.filter(s => !(s.closeAfterDeadline && s.deadline && now > new Date(s.deadline + 'T23:59:59')));
+    return all.filter(s => !s.forceClosed && !(s.closeAfterDeadline && s.deadline && now > new Date(s.deadline + 'T23:59:59')));
   },
   async create(def, id) {
     id = id || newSurveyId();
@@ -104,6 +104,8 @@ const SurveyStore = {
     payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
     await this.doc(id).set(payload, { merge: true });
   },
+  // 일부 항목만 고침 (문항 등 나머지는 건드리지 않음)
+  async patch(id, fields) { await this.doc(id).set({ ...fields, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); },
   async setStatus(id, status) { await this.doc(id).set({ status, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); },
   // 문항만 복제한 새 설문 (대상자·응답은 복제하지 않음)
   async duplicate(id, newTitle) {

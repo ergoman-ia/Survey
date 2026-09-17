@@ -639,11 +639,24 @@
         } else if (!q) bad.push(it);
       });
       // 표준 설계를 문제 삼는 지적은 걸러냄: 척도 중간 값 설명 없음, 5점 척도 자체, 양 끝 설명만 있음, 주관식에 선택지 없음
-      const STANDARD = /중간\s*(값|설명|점|단계)|2,?\s*3,?\s*4점|양\s*끝.*(만|생략)|끝\s*값.*중간|5점 척도(를|는).*(권장|고려|변경)|주관식.*선택지|선택지.*주관식|응답 예시가 없/;
+      const STANDARD = /중간\s*(값|설명|점|단계)(에 대한|이|의)?\s*(설명)?(이|은|가)?\s*(없|생략|빠)|2,?\s*3,?\s*4점|5점 척도(를|는).*(권장|고려|변경)|주관식.*선택지|선택지.*주관식|응답 예시가 없/;
       const dropped = (result.items || []).filter(it => !bad.includes(it) && STANDARD.test((it.issue || '') + ' ' + (it.suggestion || '')));
       result.items = (result.items || []).filter(it => !dropped.includes(it) && !bad.includes(it));
+      // 규칙 점검(모델과 무관하게 항상 실행): 척도 양 끝 설명 비어 있음, 선택지 2개 미만, 빈 질문 문구. 모델이 같은 문항을 이미 지적했으면 중복 추가하지 않음
+      const ruleItems = [];
+      model.questions.forEach((q, i) => {
+        const already = k => result.items.some(it => it.index === i && it.fix && it.fix[k] !== undefined);
+        if (q.type === 'scale' && !(q.labels && q.labels[0] && q.labels[0].trim() && q.labels[1] && q.labels[1].trim()) && !already('labels')) {
+          const t = q.title || '';
+          const labels = /만족/.test(t) ? ['매우 불만족', '매우 만족'] : /동의|생각|그렇/.test(t) ? ['전혀 그렇지 않다', '매우 그렇다'] : /도움|유용|효과|중요|필요/.test(t) ? ['전혀 그렇지 않다', '매우 그렇다'] : /가능성|의향|추천/.test(t) ? ['전혀 없다', '매우 높다'] : ['매우 낮음', '매우 높음'];
+          ruleItems.push({ index: i, original: q.title, severity: 'medium', issue: `선형 배율의 양 끝 설명이 비어 있습니다. ${q.min}점과 ${q.max}점이 무엇을 뜻하는지 응답자가 알 수 없습니다.`, suggestion: '양 끝 설명을 채우세요.', fix: { labels }, rule: true });
+        }
+        if ((q.type === 'single' || q.type === 'multi' || q.type === 'dropdown') && (q.options || []).filter(o => String(o).trim()).length < 2 && !already('options')) ruleItems.push({ index: i, original: q.title, severity: 'high', issue: '선택지가 2개 미만입니다.', suggestion: '선택지를 2개 이상 넣으세요.', rule: true });
+        if (!(q.title || '').trim()) ruleItems.push({ index: i, original: q.title, severity: 'high', issue: '질문 문구가 비어 있습니다.', suggestion: '질문을 적으세요.', rule: true });
+      });
+      result.items = result.items.concat(ruleItems).sort((a, b) => a.index - b.index);
       if (bad.length) log('aiReviewLog', `문항 번호를 확인할 수 없는 지적 ${bad.length}건은 제외했습니다.`);
-      log('aiReviewLog', `응답 도착 · ${used} · ${sec}초 · 지적 ${result.items.length}건` + (dropped.length ? ` (척도 중간 설명 관련 ${dropped.length}건은 표준 설계이므로 제외)` : '') + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : ''));
+      log('aiReviewLog', `응답 도착 · ${used} · ${sec}초 · 지적 ${result.items.length}건` + (ruleItems.length ? ` (규칙 점검 ${ruleItems.length}건 포함)` : '') + (dropped.length ? ` (척도 중간 설명 관련 ${dropped.length}건은 표준 설계이므로 제외)` : '') + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : ''));
       const sev = { high: ['b-bad', '중요'], medium: ['b-warn', '권장'], low: ['b-gray', '참고'] };
       // 모델이 준 fix(고친 뒤의 값)를 문항에 실제로 적용할 변경 목록으로 정리 — 예전 응답(rewrite만 있음)도 title 변경으로 받아 줌
       const FIELD = { title: '질문 문구', description: '설명', options: '선택지', allowOther: '기타 직접 입력', labels: '척도 양 끝 설명', min: '최솟값', max: '최댓값', required: '필수 여부', type: '유형' };
@@ -683,7 +696,7 @@
         ((result.items || []).length ? (result.items || []).map((it, k) => {
           const q = model.questions[it.index]; const [cls, label] = sev[it.severity] || sev.low; const ch = plans[k];
           return `<div class="q-card" style="border-left-color:${it.severity === 'high' ? 'var(--bad)' : it.severity === 'medium' ? 'var(--warn)' : 'var(--line)'}">
-            <div><span class="badge ${cls}" style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px">${label}</span> <b>${it.index + 1}번</b> ${esc(q ? q.title : '')}</div>
+            <div><span class="badge ${cls}" style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px">${label}</span>${it.rule ? ' <span class="muted" style="font-size:11px">규칙 점검</span>' : ''} <b>${it.index + 1}번</b> ${esc(q ? q.title : '(빈 질문)')}</div>
             <div style="margin-top:4px">${esc(it.issue)}</div>
             ${it.suggestion ? `<div class="muted" style="margin-top:2px">제안: ${esc(it.suggestion)}</div>` : ''}
             ${ch.length ? `<div style="margin-top:6px;font-size:13px">${ch.map((c, j) => `<label style="display:block;cursor:pointer"><input type="checkbox" data-chg="${k}:${j}"${c.on ? ' checked' : ''}> <span class="muted">${FIELD[c.k]}:</span> <s style="color:#999">${esc(c.before)}</s> → <b>${esc(c.after)}</b>${c.on ? '' : ' <span class="muted">(지적 내용과 무관해 보여 꺼 둠)</span>'}</label>`).join('')}<div class="row" style="margin-top:6px"><button class="btn sm sec" data-apply="${k}">체크한 항목만 고치기</button></div></div>`

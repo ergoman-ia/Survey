@@ -95,6 +95,7 @@
       <button class="btn sm sec" id="svNew" title="새 설문 만들기">새 설문</button>
       <button class="btn sm sec" id="svEdit">문항 편집</button>
       <button class="btn sm sec" id="svDup">복제</button>
+      <button class="btn sm sec" id="svClose" title="응답 접수를 지금 끝내거나 다시 엽니다">강제 마감</button>
       <button class="btn sm sec" id="svArchive">보관</button>
       <button class="btn sm danger" id="svDelete">삭제</button>
     </div>
@@ -468,6 +469,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     renderState();
     document.title = CUR.title + ' — 관리';
     $('svArchive').textContent = CUR.status === 'archived' ? '복원' : '보관';
+    renderCloseBtn();
     unsubs.forEach(u => u()); unsubs = [];
     recipients = []; responses = [];
     aiPanelReset(); staleChecked = '';   // 다른 설문의 AI 진행 상태·안내는 지움
@@ -486,7 +488,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     renderSetup();
   }
   // 상태 표시: 진행 중(초록) / 마감(빨강) / 보관(회색) — index.html과 같은 기준
-  const isClosedSv = sv => sv.closeAfterDeadline && sv.deadline && new Date() > new Date(sv.deadline + 'T23:59:59');
+  const isClosedSv = sv => !!sv.forceClosed || (sv.closeAfterDeadline && sv.deadline && new Date() > new Date(sv.deadline + 'T23:59:59'));
   const stateOf = sv => sv.status === 'archived' ? 'archived' : isClosedSv(sv) ? 'closed' : 'open';
   const STATE_LABEL = { open: '진행 중', closed: '마감', archived: '보관' };
   const fmtDeadline = d => d ? d.replace(/-/g, '.') + '.' : '';
@@ -547,6 +549,33 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const id = await store.duplicate(SID, t.trim() || undefined);
     await refreshSurveys(); await selectSurvey(id);
     await Modal.alert('문항만 복제했습니다. 대상자와 응답은 비어 있습니다.');
+  };
+  // 강제 마감 / 다시 시작: 마감일과 관계없이 응답 접수를 끊거나 다시 엽니다 (설문 문서의 forceClosed 항목)
+  function renderCloseBtn() {
+    const b = $('svClose'); const st = stateOf(CUR);
+    b.style.display = st === 'archived' ? 'none' : '';
+    b.textContent = st === 'closed' ? '다시 시작' : '강제 마감';
+    b.classList.toggle('danger', st !== 'closed');
+  }
+  $('svClose').onclick = async () => {
+    if (!SID) return;
+    const st = stateOf(CUR);
+    if (st === 'open') {
+      if (!await Modal.confirm(`"${CUR.title}" 설문의 응답 접수를 지금 마감할까요?\n마감하면 링크로 들어와도 제출할 수 없고, 상태가 "마감"으로 바뀌며 AI 요약·보고서를 만들 수 있습니다. 언제든 "다시 시작"으로 되돌릴 수 있습니다.`)) return;
+      await store.patch(SID, { forceClosed: true, forceClosedAt: Date.now() });
+    } else if (st === 'closed') {
+      const byDeadline = !CUR.forceClosed && isClosedSv(CUR);   // 마감일이 지나서 닫힌 경우
+      let patch = { forceClosed: false };
+      if (byDeadline || (CUR.closeAfterDeadline && CUR.deadline && new Date() > new Date(CUR.deadline + 'T23:59:59'))) {
+        const d = await Modal.prompt('마감일이 이미 지났습니다. 새 마감일을 YYYY-MM-DD 형식으로 적으세요. 비워 두면 마감일 없이 계속 진행합니다.', '');
+        if (d === null) return;
+        const v = d.trim();
+        if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return Modal.alert('날짜 형식이 올바르지 않습니다. 예: 2026-10-31');
+        patch.deadline = v; if (!v) patch.closeAfterDeadline = false;
+      } else if (!await Modal.confirm(`"${CUR.title}" 설문의 응답 접수를 다시 열까요?\n응답이 추가되면 저장된 AI 요약·보고서는 자동으로 지워집니다.`)) return;
+      await store.patch(SID, patch);
+    }
+    await refreshSurveys(); await selectSurvey(SID);
   };
   $('svArchive').onclick = async () => {
     if (!SID) return;
