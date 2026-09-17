@@ -58,6 +58,16 @@
   .opts li { margin: 2px 0; }
   .tag { display: inline-block; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-left: 6px; vertical-align: middle; }
   @media (max-width: 600px) { .row { grid-template-columns: 1fr; } .hero h1 { font-size: 24px; } }
+  /* 관리자 로그인 모달 (관리자 모드·설문 편집 페이지에 로그인 없이 들어오면 이 화면으로 와서 뜸) */
+  #loginView { position: fixed; inset: 0; background: rgba(20, 30, 50, .45); display: none; align-items: center; justify-content: center; z-index: 9000; padding: 16px; }
+  #loginView.on { display: flex; }
+  .login { background: #fff; border-radius: 12px; width: min(400px, 100%); box-shadow: 0 20px 60px rgba(0, 0, 0, .25); padding: 22px; animation: login-in .15s ease-out; }
+  @keyframes login-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .login h2 { font-size: 17px; margin: 0 0 12px; color: var(--c); }
+  .login input { width: 100%; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: inherit; }
+  .login .btns { display: flex; justify-content: flex-end; gap: 8px; }
+  .login .btns button { padding: 8px 18px; border-radius: 8px; border: 1px solid var(--c); font: inherit; cursor: pointer; background: #fff; color: var(--c); }
+  .login .btns button.primary { background: var(--c); color: #fff; }
 </style>
 </head>
 <body>
@@ -67,11 +77,19 @@
       <h1>설문 제작 및 발송 관리 시스템</h1>
       <p>설문을 만들고, 대상자에게 메일로 보내고, 응답과 통계를 한곳에서 관리합니다.</p>
     </div>
-    <div class="pagenav"><a href="admin.html">관리자 모드</a></div>
+    <div class="pagenav"><a href="admin.html" id="adminLink">관리자 모드</a></div>
   </div>
   <div id="app"><div class="card"><p class="meta">설문을 불러오는 중입니다…</p></div></div>
 </div>
 
+<div id="loginView">
+  <div class="login" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+    <h2 id="loginTitle">관리자 로그인</h2>
+    <input type="password" id="pw" placeholder="관리자 비밀번호" autocomplete="current-password">
+    <div class="btns"><button type="button" id="loginCancel">취소</button><button type="button" class="primary" id="loginBtn">로그인</button></div>
+    <p class="meta" id="loginMsg" style="margin:8px 0 0"></p>
+  </div>
+</div>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js"></script>
@@ -81,6 +99,32 @@
   if (new URLSearchParams(location.search).get('t')) { location.replace('survey.html' + location.search); return; }
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const app = document.getElementById('app');
+  /* ---------- 관리자 로그인 모달 ----------
+   * "관리자 모드"를 누르거나, 로그인 없이 admin.html·editor.html을 열어 이곳(?next=…)으로 되돌아온 경우에 뜹니다.
+   * 이미 로그인된 세션이면 창 없이 바로 이동합니다. */
+  const loginView = document.getElementById('loginView'), pwEl = document.getElementById('pw'), loginMsg = document.getElementById('loginMsg');
+  let loginNext = 'admin.html';
+  const sha256 = async str => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)))].map(b => b.toString(16).padStart(2, '0')).join('');
+  const loggedIn = () => { try { return sessionStorage.getItem('surveyAdmin') === ADMIN_PASSWORD_HASH; } catch (_) { return false; } };
+  function openLogin(next) {
+    loginNext = /^(admin|editor)\.html(\?[^#]*)?$/.test(next || '') ? next : 'admin.html';   // 이 사이트의 두 화면으로만 이동
+    if (loggedIn()) { location.href = loginNext; return; }
+    loginMsg.textContent = ''; pwEl.value = ''; loginView.classList.add('on'); pwEl.focus();
+  }
+  const closeLogin = () => { loginView.classList.remove('on'); if (new URLSearchParams(location.search).get('next')) history.replaceState(null, '', 'index.html'); };
+  async function tryLogin() {
+    const pw = pwEl.value; if (!pw) return;
+    const h = await sha256(pw);
+    if (h === ADMIN_PASSWORD_HASH) { try { sessionStorage.setItem('surveyAdmin', h); } catch (_) {} location.href = loginNext; }
+    else { loginMsg.textContent = '비밀번호가 올바르지 않습니다.'; pwEl.select(); }
+  }
+  document.getElementById('adminLink').onclick = e => { e.preventDefault(); openLogin('admin.html'); };
+  document.getElementById('loginBtn').onclick = tryLogin;
+  document.getElementById('loginCancel').onclick = closeLogin;
+  loginView.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); tryLogin(); } else if (e.key === 'Escape') { e.preventDefault(); closeLogin(); } });
+  const nextParam = new URLSearchParams(location.search).get('next');
+  if (nextParam) openLogin(nextParam);
+
   const typeName = { single: '객관식', multi: '체크박스', dropdown: '드롭다운', scale: '선형 배율', rating: '별점', short: '단답형', long: '장문형' };
   const PAGE = 20;
 
