@@ -10,6 +10,9 @@
   body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; font-size: 14px; line-height: 1.5; }
   .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; }
   header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  /* 설문 선택 줄: 선택 상자와 강제 마감·보관·삭제 버튼이 한 줄에 붙어 있도록(줄 바꿈 금지) */
+  .sel-row { flex-wrap: nowrap; }
+  .sel-row select { width: 473px; max-width: 473px; flex: 0 1 473px; min-width: 200px; }
   h1 { font-size: 20px; margin: 0; color: var(--c); }
   .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -17,9 +20,9 @@
   .tabs button:hover { background: #fbdcc0; }
   .tabs button.on { background: #e8863a; color: #fff; border-color: #e8863a; }
   .tab { display: none; } .tab.on { display: block; }
-  /* 요약 숫자 한 줄: 상태 칸(조금 넓게) + 숫자 8칸 */
-  .stats { display: grid; grid-template-columns: 1.2fr repeat(8, minmax(0, 1fr)); gap: 8px; }
-  .stat { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 8px; text-align: center; min-width: 0; }
+  /* 현황판(요약 숫자 한 줄): 옅은 하늘색 바탕으로 다른 흰 카드와 구분 — 상태 칸(조금 넓게) + 숫자 8칸 */
+  .stats { display: grid; grid-template-columns: 1.2fr repeat(8, minmax(0, 1fr)); gap: 8px; background: #e8f3fc; border: 1px solid #c5ddf0; border-radius: 12px; padding: 10px; }
+  .stat { background: #fff; border: 1px solid #c5ddf0; border-radius: 10px; padding: 10px 8px; text-align: center; min-width: 0; }
   .stat b { display: block; font-size: 22px; color: var(--c); line-height: 1.2; }
   .stat span { color: var(--muted); font-size: 11px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .st-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; vertical-align: middle; }
@@ -80,21 +83,18 @@
     <input type="password" id="pw" placeholder="관리자 비밀번호" autofocus>
     <button class="btn" style="width:100%" id="loginBtn">로그인</button>
     <p class="muted" id="loginMsg"></p>
-    <p class="muted" style="margin-top:20px">
-      <a href="#" id="hashTool">비밀번호 해시 만들기</a> — 새 비밀번호의 해시값을 만들어 firebase-config.js의 ADMIN_PASSWORD_HASH에 넣으세요.
-    </p>
   </div>
 </div>
 
 <!-- ===================== 관리 화면 ===================== -->
 <div class="wrap" id="adminView" style="display:none">
   <header>
-    <div class="row" style="margin:0">
-      <h1>설문 관리</h1>
-      <select id="surveySel" title="관리할 설문 선택" style="flex:1 1 340px;max-width:473px;min-width:0"></select>
-      <button class="btn sm danger" id="svClose" title="응답 접수를 지금 끝내거나 다시 엽니다">강제 마감</button>
-      <button class="btn sm sec" id="svArchive">보관</button>
-      <button class="btn sm danger" id="svDelete">삭제</button>
+    <div class="row sel-row" style="margin:0">
+      <h1 style="white-space:nowrap">설문 관리</h1>
+      <select id="surveySel" title="관리할 설문 선택"></select>
+      <button class="btn sm danger" id="svClose" title="응답 접수를 지금 끝내거나 다시 엽니다" style="white-space:nowrap">강제 마감</button>
+      <button class="btn sm sec" id="svArchive" style="white-space:nowrap">보관</button>
+      <button class="btn sm danger" id="svDelete" style="white-space:nowrap">삭제</button>
     </div>
     <div class="row" style="margin:0">
       <span class="muted" id="conn" title="Firestore 실시간 연결 상태 — 문제가 있을 때만 표시됩니다">연결 중…</span>
@@ -416,12 +416,6 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   }
   $('loginBtn').onclick = tryLogin;
   $('pw').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
-  $('hashTool').onclick = async e => {
-    e.preventDefault();
-    const pw = await Modal.prompt('새 비밀번호를 입력하세요. (해시값만 표시되며 저장되지 않습니다)');
-    if (!pw) return;
-    await Modal.prompt('아래 값을 firebase-config.js의 ADMIN_PASSWORD_HASH에 붙여 넣으세요.', await sha256(pw));
-  };
   $('logoutBtn').onclick = () => { sessionStorage.removeItem('surveyAdmin'); location.reload(); };
 
   /* ================= Firebase ================= */
