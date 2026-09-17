@@ -115,7 +115,7 @@
     const meta = [sv.deadline ? '응답 마감: ' + sv.deadline : '', '문항 수: ' + sv.questions.length + '개', sv.questions.some(q => q.required) ? '필수 문항 ' + sv.questions.filter(q => q.required).length + '개' : ''].filter(Boolean).join(' · ');
     const notice = sv.openEnabled === false ? '이 설문은 이메일로 발송된 개인 링크를 통해서만 응답할 수 있습니다.' : '메일로 개인 링크를 받으셨다면 그 링크로 응답해 주세요. 링크가 없는 분은 위 버튼을 눌러 이름과 소속을 적고 응답할 수 있습니다.';
     app.innerHTML = `
-      ${backLink ? '<p style="margin:0 0 10px"><a href="index.html" style="color:var(--muted);font-size:13px;text-decoration:none">← 설문 목록으로</a></p>' : ''}
+      ${backLink ? '<p style="margin:0 0 10px"><a href="index.html" style="display:inline-block;color:#c85a00;font-weight:700;font-size:14px;text-decoration:none;background:#fdebd9;border:1px solid #f0c9a4;border-radius:8px;padding:6px 12px">← 설문 목록으로</a></p>' : ''}
       <div class="card detail">
         <div>${badge(sv)}</div>
         <h2>${esc(sv.title)}</h2>

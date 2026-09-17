@@ -614,7 +614,7 @@
       $('aiDraftMsg').innerHTML = `<b style="color:var(--ok);font-size:14px">초안 완성</b> — 문항 ${qs.length}개 추가 (${esc(used)}). 노란 표시 문항을 확인하고 저장하세요.` + esc(short);
       log('aiDraftLog', `문항 ${qs.length}개를 편집기에 넣었습니다: ` + qs.map(q => SURVEY_TYPES[q.type].name).join(', ') + (short ? ' — 요청보다 적음' : ''));
       markDirty(); renderAll();
-    } catch (err) { stop(); busy($('aiDraftMsg'), false, ''); log('aiDraftLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert('초안 생성 실패: ' + err.message); }
+    } catch (err) { stop(); busy($('aiDraftMsg'), false, ''); log('aiDraftLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert('초안 생성 실패: ' + AiClient.shortReason(err.message)); }
     $('aiDraftBtn').disabled = false;
   };
   $('aiReviewBtn').onclick = async () => {
@@ -642,7 +642,7 @@
           </div>`; }).join('') : '<p class="muted">특별히 고칠 문항이 없습니다.</p>');
       $('aiReview').querySelectorAll('[data-apply]').forEach(b => b.onclick = () => { const it = result.items[+b.dataset.apply]; const q = model.questions[it.index]; if (!q) return; q.title = it.rewrite; delete q.draft; markDirty(); renderQuestions(); renderPreview(); b.textContent = '적용됨'; b.disabled = true; });
       busy($('aiReviewMsg'), false, `${(result.items || []).length}건`);
-    } catch (err) { stop(); busy($('aiReviewMsg'), false, ''); log('aiReviewLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert('검토 실패: ' + err.message); }
+    } catch (err) { stop(); busy($('aiReviewMsg'), false, ''); log('aiReviewLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert('검토 실패: ' + AiClient.shortReason(err.message)); }
     $('aiReviewBtn').disabled = false;
   };
   const toBase64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });

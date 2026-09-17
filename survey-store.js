@@ -213,6 +213,19 @@ const AiClient = {
     catch (err) { this._status = { enabled: false, error: err.message }; }
     return this._status;
   },
+  // 오류 메시지를 한 줄 원인으로 줄임 (화면 안내용)
+  shortReason(msg) {
+    const m = String(msg || '');
+    if (/429|quota|한도|RESOURCE_EXHAUSTED|rate/i.test(m)) return '사용 한도 초과 — 잠시 후 다시 시도하세요.';
+    if (/503|overload|busy|일시적|temporar|unavailable|502|504|500/i.test(m)) return '서버가 바쁩니다 — 잠시 후 다시 시도하세요.';
+    if (/Failed to fetch|NetworkError|Load failed|시간 초과|timeout/i.test(m)) return '네트워크 연결이 끊겼습니다 — 다시 시도하세요.';
+    if (/로그인|accounts\.google|액세스 권한/i.test(m)) return '발송 서버 배포의 액세스 권한이 "모든 사용자"가 아닙니다.';
+    if (/GEMINI_API_KEY|키가 설정/i.test(m)) return 'Gemini API 키가 서버에 설정되지 않았습니다.';
+    if (/404|not found|모델 없음/i.test(m)) return '모델을 찾을 수 없습니다 — 서버의 모델 이름을 확인하세요.';
+    if (/해석 실패|JSON|파싱/i.test(m)) return '모델 응답 형식 오류 — 다시 시도하세요.';
+    if (/결과 없이|새 버전/i.test(m)) return '발송 서버가 최신 Code.gs로 배포되지 않았습니다.';
+    return m.replace(/^HTTP \d+\s*/, '').slice(0, 60) || '알 수 없는 오류';
+  },
   async run(task, payload) {
     const d = await this.call({ action: 'ai', task, payload });
     // 서버가 ok:true인데 result가 없는 경우(배포 버전 불일치 등)를 그대로 넘기면 화면 코드가 이해하기 어려운 오류를 냅니다
