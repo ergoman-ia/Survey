@@ -105,7 +105,7 @@
     if (st === 'archived') return `<span class="btn off${big ? ' big' : ''}">종료된 설문</span>`;
     if (st === 'closed') return `<span class="btn off${big ? ' big' : ''}">마감된 설문</span>`;
     if (sv.openEnabled === false) return `<span class="btn off${big ? ' big' : ''}">메일 링크로만 응답</span>`;
-    return `<a class="btn${big ? ' big' : ''}" href="survey.html?s=${encodeURIComponent(sv.id)}">설문 응답하기</a>`;
+    return `<a class="btn${big ? ' big' : ''}" href="survey.html?s=${encodeURIComponent(sv.id)}&from=list">설문 응답하기</a>`;
   }
   function badge(sv) {
     const st = stateOf(sv);

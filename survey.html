@@ -43,6 +43,8 @@
   .rating label.num.on { background: var(--c); color: #fff; border-color: var(--c); }
   .rating-val { font-size: 13px; color: var(--muted); margin-top: 4px; }
   .q-desc { color: var(--muted); font-size: 13px; margin: -8px 0 10px; }
+  /* 스마트폰(QR로 접속): 여백을 줄여 화면을 넓게 쓰고, 입력 글자는 16px 이상으로 두어 iOS가 자동 확대하지 않게 */
+  @media (max-width: 480px) { .wrap { padding: 12px 10px 40px; } .card { padding: 16px 14px; border-radius: 10px; } h1 { font-size: 20px; } .scale { gap: 4px; } .scale label { padding: 8px 0; } textarea, input[type=text], select { font-size: 16px; } }
 </style>
 </head>
 <body>
@@ -151,8 +153,8 @@
   function renderSurvey() {
     const who = recipient ? `<div class="meta">응답자: ${esc(recipient.name)} (${esc(recipient.email)})</div>` : '';
     const dl = SURVEY.deadline ? `<div class="meta">응답 마감: ${esc(SURVEY.deadline)}</div>` : '';
-    // 공개 링크로 들어온 응답자는 설문 목록으로 돌아갈 수 있게(메일 링크 응답자는 목록이 필요 없음)
-    const back = recipient ? '' : '<p style="margin:0 0 10px"><a href="index.html" style="display:inline-block;color:#c85a00;font-weight:700;font-size:14px;text-decoration:none;background:#fdebd9;border:1px solid #f0c9a4;border-radius:8px;padding:6px 12px">← 설문 목록으로</a></p>';
+    // 설문 안내 페이지의 목록에서 들어온 경우(from=list)에만 목록으로 돌아가는 링크 표시. QR·메일 링크로 바로 들어온 사람에게는 보이지 않음
+    const back = (recipient || params.get('from') !== 'list') ? '' : '<p style="margin:0 0 10px"><a href="index.html" style="display:inline-block;color:#c85a00;font-weight:700;font-size:14px;text-decoration:none;background:#fdebd9;border:1px solid #f0c9a4;border-radius:8px;padding:6px 12px">← 설문 목록으로</a></p>';
     app.innerHTML = `${back}
       <div class="card">
         <h1>${esc(SURVEY.title)}</h1>
