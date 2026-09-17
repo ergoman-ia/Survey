@@ -92,17 +92,15 @@
   <header>
     <div class="row" style="margin:0">
       <h1 id="surveyTitle">설문 관리</h1>
-      <select id="surveySel" title="관리할 설문 선택" style="max-width:280px"></select>
-      <button class="btn sm sec" id="svNew" title="새 설문 만들기">새 설문</button>
-      <button class="btn sm sec" id="svEdit">문항 편집</button>
-      <button class="btn sm sec" id="svDup">복제</button>
+      <select id="surveySel" title="관리할 설문 선택" style="max-width:364px;min-width:260px"></select>
       <button class="btn sm sec" id="svClose" title="응답 접수를 지금 끝내거나 다시 엽니다">강제 마감</button>
       <button class="btn sm sec" id="svArchive">보관</button>
       <button class="btn sm danger" id="svDelete">삭제</button>
     </div>
     <div class="row" style="margin:0">
-      <span class="muted" id="conn">연결 중…</span>
+      <span class="muted" id="conn" title="Firestore 실시간 연결 상태 — 문제가 있을 때만 표시됩니다">연결 중…</span>
       <a class="btn sec" href="index.html" style="text-decoration:none">설문 안내 페이지</a>
+      <a class="btn sec" id="toEditor" href="editor.html" style="text-decoration:none" title="설문을 새로 만들고 편집·복제하는 곳">설문 편집 페이지</a>
       <button class="btn sec" id="logoutBtn">로그아웃</button>
     </div>
   </header>
@@ -470,6 +468,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     renderState();
     document.title = CUR.title + ' — 관리';
     $('svArchive').textContent = CUR.status === 'archived' ? '복원' : '보관';
+    $('toEditor').href = 'editor.html?s=' + encodeURIComponent(SID);
     renderCloseBtn();
     unsubs.forEach(u => u()); unsubs = [];
     recipients = []; responses = [];
@@ -479,9 +478,9 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     // orderBy를 쓰지 않습니다: Firestore는 정렬 필드가 없는 문서를 결과에서 빼 버려 예전 데이터가 사라져 보일 수 있음. 화면에서 정렬
     unsubs.push(store.recipients(SID).onSnapshot(snap => {
       recipients = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => ms(b.createdAt) - ms(a.createdAt));
-      $('conn').textContent = '실시간 연결됨' + (CUR.status === 'archived' ? ' · 보관된 설문' : '');
+      $('conn').textContent = ''; $('conn').style.color = '';   // 정상일 때는 표시하지 않음. 문제(연결 오류·규칙 거부)가 있을 때만 붉게 표시
       renderStats(); renderRecipients(); renderGroupFilter();
-    }, err => { $('conn').textContent = '연결 오류: ' + err.message; console.error(err); }));
+    }, err => { $('conn').textContent = 'DB 연결 오류: ' + err.message; $('conn').style.color = 'var(--bad)'; console.error(err); }));
     unsubs.push(store.responses(SID).onSnapshot(snap => {
       responses = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => ms(b.submittedAt) - ms(a.submittedAt));
       renderStats(); renderGroupFilter(); renderResponses(); renderCharts(); renderAiButtons(); checkAiStale();
@@ -543,15 +542,6 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     $('checkAi').disabled = false;
   };
   $('surveySel').onchange = e => { if (e.target.value) selectSurvey(e.target.value); };
-  $('svNew').onclick = () => location.href = 'editor.html?s=new';
-  $('svEdit').onclick = () => { if (SID) location.href = 'editor.html?s=' + encodeURIComponent(SID); };
-  $('svDup').onclick = async () => {
-    if (!SID) return;
-    const t = await Modal.prompt('복제할 설문의 제목', CUR.title + ' (복사본)'); if (t === null) return;
-    const id = await store.duplicate(SID, t.trim() || undefined);
-    await refreshSurveys(); await selectSurvey(id);
-    await Modal.alert('문항만 복제했습니다. 대상자와 응답은 비어 있습니다.');
-  };
   // 강제 마감 / 다시 시작: 마감일과 관계없이 응답 접수를 끊거나 다시 엽니다 (설문 문서의 forceClosed 항목)
   function renderCloseBtn() {
     const b = $('svClose'); const st = stateOf(CUR);

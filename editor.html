@@ -75,6 +75,7 @@
       <span class="status" id="status">불러오는 중…</span>
       <select id="surveySel" title="편집할 설문 선택"></select>
       <button class="btn sec" id="newBtn">새 설문</button>
+      <button class="btn sec" id="dupBtn" title="지금 연 설문의 문항만 복사해 새 설문을 만듭니다">복제</button>
       <a class="btn sec" href="index.html">설문 안내</a>
       <a class="btn sec" href="admin.html">관리자 모드</a>
       <button class="btn" id="saveBtn">저장하고 적용</button>
@@ -264,6 +265,17 @@
   }
   $('surveySel').onchange = e => e.target.value === '__new' ? startNew() : openSurvey(e.target.value);
   $('newBtn').onclick = startNew;
+  // 복제: 지금 연 설문의 문항·설정만 새 설문으로 (대상자·응답·AI 결과는 복사하지 않음)
+  $('dupBtn').onclick = async () => {
+    if (!currentId) return Modal.alert('저장한 설문을 연 상태에서만 복제할 수 있습니다. 새 설문은 먼저 저장하세요.');
+    if (dirty && !await Modal.confirm('저장하지 않은 변경 사항이 있습니다. 저장된 내용 기준으로 복제할까요?')) return;
+    const t = await Modal.prompt('복제할 설문의 제목', (model.title || '') + ' (복사본)'); if (t === null) return;
+    try {
+      const id = await store.duplicate(currentId, t.trim() || undefined);
+      dirty = false; await refreshList(); await openSurvey(id);
+      setStatus('복제했습니다. 대상자·응답은 비어 있는 새 설문입니다', 'ok');
+    } catch (err) { await Modal.alert('복제 실패: ' + err.message); }
+  };
 
   /* ---------- 기본 정보 ---------- */
   function renderMeta() {

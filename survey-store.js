@@ -110,7 +110,7 @@ const SurveyStore = {
   // 문항만 복제한 새 설문 (대상자·응답은 복제하지 않음)
   async duplicate(id, newTitle) {
     const s = await this.get(id); if (!s) throw new Error('설문을 찾을 수 없습니다.');
-    delete s.createdAt; delete s.createdAtMs; delete s.updatedAt;
+    ['createdAt', 'createdAtMs', 'updatedAt', 'ai', 'forceClosed', 'forceClosedAt', 'forceClosedReason', 'closeLog', 'isTest'].forEach(k => delete s[k]);   // AI 결과·마감 이력·TEST 표시는 복제하지 않음
     s.title = newTitle || (s.title + ' (복사본)'); s.status = 'active';
     return this.create(s);
   },
