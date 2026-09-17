@@ -151,7 +151,9 @@
   function renderSurvey() {
     const who = recipient ? `<div class="meta">응답자: ${esc(recipient.name)} (${esc(recipient.email)})</div>` : '';
     const dl = SURVEY.deadline ? `<div class="meta">응답 마감: ${esc(SURVEY.deadline)}</div>` : '';
-    app.innerHTML = `
+    // 공개 링크로 들어온 응답자는 설문 목록으로 돌아갈 수 있게(메일 링크 응답자는 목록이 필요 없음)
+    const back = recipient ? '' : '<p style="margin:0 0 10px"><a href="index.html" style="display:inline-block;color:#c85a00;font-weight:700;font-size:14px;text-decoration:none;background:#fdebd9;border:1px solid #f0c9a4;border-radius:8px;padding:6px 12px">← 설문 목록으로</a></p>';
+    app.innerHTML = `${back}
       <div class="card">
         <h1>${esc(SURVEY.title)}</h1>
         <p class="desc">${esc(SURVEY.description)}</p>
