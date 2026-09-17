@@ -305,9 +305,11 @@
     if (reviewSig && sig !== reviewSig && $('aiReview').innerHTML) { $('aiReview').innerHTML = ''; $('aiReviewMsg').textContent = '문항이 바뀌어 검토 결과를 지웠습니다. 다시 검토하세요.'; }
     reviewSig = sig;
     const list = $('qList');
+    // 유형과 맞지 않는 값 정리: 선택지 유형이 아닌데 options가 남아 있으면 지움(그렇지 않으면 아래에서 선택지 편집란이 대신 그려짐)
+    model.questions.forEach(q => { if (!(q.type === 'single' || q.type === 'multi' || q.type === 'dropdown') && q.options) delete q.options; if (q.type === 'scale') { q.labels = Array.isArray(q.labels) ? q.labels.slice(0, 2) : ['', '']; while (q.labels.length < 2) q.labels.push(''); q.min = Number(q.min ?? 1); q.max = Number(q.max ?? 5); } });
     list.innerHTML = model.questions.map((q, i) => {
       let body = '';
-      if (q.options) {
+      if ((q.type === 'single' || q.type === 'multi' || q.type === 'dropdown') && q.options) {
         body += `<div class="opts" data-i="${i}">` + q.options.map((o, j) =>
           `<div class="opt-row"><span class="muted">${q.type === 'multi' ? '☐' : q.type === 'dropdown' ? (j + 1) + '.' : '○'}</span><input type="text" data-opt="${j}" value="${esc(o)}" placeholder="옵션 ${j + 1}"><button class="btn icon" data-delopt="${j}" title="옵션 삭제">✕</button></div>`).join('') + `</div>
           <div class="row"><button class="btn sm sec" data-addopt>옵션 추가</button>${q.type !== 'dropdown' ? `<label class="chk"><input type="checkbox" data-other ${q.allowOther ? 'checked' : ''}> "기타" 직접 입력 칸 추가</label>` : ''}</div>`;
@@ -673,7 +675,8 @@
         return out;
       };
       // 지적 내용과 무관한 변경(예: 설명이 빠졌다는 지적에 유형·범위까지 바꾸기)은 기본으로 끔 — 사용자가 체크해서 켤 수 있음
-      const RELEVANT = { type: /유형|형식|객관식|체크박스|드롭다운|단답|장문|주관식으로|별점으로|배율로/, min: /범위|최솟값|최소값|시작 값|0점|1점부터/, max: /범위|최댓값|최대값|단계|점 척도|\d점 만점|별 개수/, options: /선택지|보기|옵션|항목이|중복|누락|상호 ?배타|기타/, labels: /설명|양 ?끝|라벨|레이블|기준|앵커|방향/, allowOther: /기타|직접 입력/, required: /필수|선택 사항|응답 강제/, title: /문구|질문|표현|용어|이중|유도|편향|모호|어색|길|짧/, description: /설명|안내/ };
+      // 유형·범위 변경은 지적이 그것을 콕 집어 말할 때만 기본 체크. 그 밖에는 꺼 두고 사용자가 직접 켜야 적용됨
+      const RELEVANT = { type: /유형(을|이) (바꾸|변경|수정)|(객관식|체크박스|드롭다운|단답형|장문형|주관식|별점|선형 배율|척도)(으로|로) (바꾸|변경|전환)/, min: /최솟값|최소값|시작 값|0점부터|1점부터|범위(를|가) (바꾸|변경|조정|잘못)/, max: /최댓값|최대값|(\d+)점 척도(로|으로)|(\d+)단계(로|으로)|별 개수|범위(를|가) (바꾸|변경|조정|잘못)/, options: /선택지|보기|옵션|항목이|중복|누락|상호 ?배타|기타/, labels: /설명|양 ?끝|라벨|레이블|기준|앵커|방향/, allowOther: /기타|직접 입력/, required: /필수|선택 사항|응답 강제/, title: /문구|질문|표현|용어|이중|유도|편향|모호|어색|길|짧/, description: /설명|안내/ };
       const relevant = (it, k) => { const t = (it.issue || '') + ' ' + (it.suggestion || ''); return k === 'title' || k === 'description' ? true : RELEVANT[k].test(t); };
       const plans = (result.items || []).map(it => changesOf(it, model.questions[it.index]).map(c => ({ ...c, on: relevant(it, c.k) })));
       $('aiReview').innerHTML = `<div class="hint"><b>총평</b> ${esc(result.overall || '')} <span class="muted">(${esc(used)})</span></div>` +
@@ -694,6 +697,7 @@
         if (typeChange) changeType(q, typeChange.value);
         for (const c of ch) { if (c.k === 'type') continue; q[c.k] = Array.isArray(c.value) ? c.value.map(String) : c.value; }
         if (q.type === 'scale') { q.labels = (q.labels || ['', '']).slice(0, 2); while (q.labels.length < 2) q.labels.push(''); if (q.min >= q.max) { q.min = 1; q.max = Math.max(2, q.max || 5); } }
+        if (!(q.type === 'single' || q.type === 'multi' || q.type === 'dropdown')) { delete q.options; delete q.allowOther; }
         if (q.options) q.options = q.options.map(o => String(o).trim()).filter(Boolean);
         delete q.draft; markDirty(); reviewSig = model.questions.map(x => x.id + ':' + x.type).join('|'); renderQuestions(); renderPreview();
         b.textContent = '적용됨'; b.disabled = true;
