@@ -76,11 +76,10 @@
   .ai-wrap.open .ai-over { display: flex; }
   .ai-wrap.open .btn { opacity: .45; }
   /* 화면 이동 링크 묶음(설문 안내 페이지·설문 편집 페이지·관리자 모드): 세 화면 공통, 옅은 보라색 바탕 */
-  /* 페이지 이동 묶음(모든 화면 공통): 설문 안내 페이지 · 설문 편집 페이지 · 관리자 모드 · 로그아웃 — 옅은 보라 바탕, 현재 화면은 진하게 */
+  /* 다른 화면으로 가는 링크 묶음 — 옅은 보라 바탕 */
   .pagenav { display: inline-flex; gap: 4px; align-items: center; background: #efeafb; border: 1px solid #d5c9f2; border-radius: 10px; padding: 4px; flex-wrap: nowrap; white-space: nowrap; }
   .pagenav a, .pagenav button { color: #5b3fb0; font: inherit; font-size: 13px; text-decoration: none; border: 1px solid #b9a6e6; background: #fff; padding: 5px 8px; border-radius: 7px; white-space: nowrap; cursor: pointer; line-height: 1.4; }
   .pagenav a:hover, .pagenav button:hover { background: #e4dbf7; }
-  .pagenav .cur { background: #5b3fb0; color: #fff; border-color: #5b3fb0; pointer-events: none; }
   .hint { background: #fff8e6; border: 1px solid #f3dca0; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
 </style>
 </head>
@@ -108,7 +107,7 @@
     </div>
     <div class="row" style="margin:0;flex-wrap:nowrap">
       <span class="muted" id="conn" title="Firestore 실시간 연결 상태 — 문제가 있을 때만 표시됩니다"></span>
-      <div class="pagenav"><a href="index.html">설문 안내 페이지</a><a href="editor.html" id="toEditor">설문 편집 페이지</a><a href="admin.html" class="cur">관리자 모드</a><button type="button" id="logoutBtn" title="관리자 세션을 끝냅니다">로그아웃</button></div>
+      <div class="pagenav"><a href="index.html">설문 안내 페이지</a><a id="toEditor" href="editor.html" title="설문을 새로 만들고 편집·복제하는 곳">설문 편집 페이지</a><button type="button" id="logoutBtn">로그아웃</button></div>
     </div>
   </header>
 

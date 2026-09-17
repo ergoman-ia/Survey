@@ -52,11 +52,10 @@
   .login { max-width: 380px; margin: 80px auto; }
   .login input { width: 100%; margin-bottom: 10px; }
   /* 화면 이동 링크 묶음(설문 안내 페이지·설문 편집 페이지·관리자 모드): 세 화면 공통, 옅은 보라색 바탕 */
-  /* 페이지 이동 묶음(모든 화면 공통): 설문 안내 페이지 · 설문 편집 페이지 · 관리자 모드 · 로그아웃 — 옅은 보라 바탕, 현재 화면은 진하게 */
+  /* 다른 화면으로 가는 링크 묶음 — 옅은 보라 바탕 */
   .pagenav { display: inline-flex; gap: 4px; align-items: center; background: #efeafb; border: 1px solid #d5c9f2; border-radius: 10px; padding: 4px; flex-wrap: nowrap; white-space: nowrap; }
   .pagenav a, .pagenav button { color: #5b3fb0; font: inherit; font-size: 13px; text-decoration: none; border: 1px solid #b9a6e6; background: #fff; padding: 5px 8px; border-radius: 7px; white-space: nowrap; cursor: pointer; line-height: 1.4; }
   .pagenav a:hover, .pagenav button:hover { background: #e4dbf7; }
-  .pagenav .cur { background: #5b3fb0; color: #fff; border-color: #5b3fb0; pointer-events: none; }
   .hint { background: #fff8e6; border: 1px solid #f3dca0; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 10px; }
   .addbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   #pdfLog { font-size: 12px; color: var(--muted); white-space: pre-wrap; max-height: 120px; overflow: auto; }
@@ -82,7 +81,7 @@
       <button class="btn sec" id="newBtn" style="white-space:nowrap;padding:8px 10px">새 설문</button>
       <button class="btn sec" id="dupBtn" title="지금 연 설문의 문항만 복사해 새 설문을 만듭니다" style="white-space:nowrap;padding:8px 10px">복제</button>
     </div>
-    <div class="pagenav"><a href="index.html">설문 안내 페이지</a><a href="editor.html" class="cur">설문 편집 페이지</a><a href="admin.html">관리자 모드</a><button type="button" id="logoutBtn" title="관리자 세션을 끝냅니다">로그아웃</button></div>
+    <div class="pagenav"><a href="index.html">설문 안내 페이지</a><a href="admin.html">관리자 모드</a></div>
   </header>
   <p class="status" id="status" style="margin:-4px 0 10px">불러오는 중…</p>
 
@@ -225,7 +224,6 @@
   }
   $('loginBtn').onclick = tryLogin;
   $('pw').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
-  $('logoutBtn').onclick = async () => { if (dirty && !await Modal.confirm('저장하지 않은 변경 사항이 있습니다. 그래도 로그아웃할까요?')) return; dirty = false; sessionStorage.removeItem('surveyAdmin'); location.href = 'index.html'; };
 
   /* ---------- 상태 ---------- */
   let db = null, store = null, model = null, dirty = false, currentId = null, surveys = [];
