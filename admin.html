@@ -17,14 +17,13 @@
   .tabs button:hover { background: #fbdcc0; }
   .tabs button.on { background: #e8863a; color: #fff; border-color: #e8863a; }
   .tab { display: none; } .tab.on { display: block; }
-  .stats { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
+  /* 요약 숫자 한 줄: 상태 칸(조금 넓게) + 숫자 8칸 */
+  .stats { display: grid; grid-template-columns: 1.2fr repeat(8, minmax(0, 1fr)); gap: 8px; }
   .stat { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 8px; text-align: center; min-width: 0; }
   .stat b { display: block; font-size: 22px; color: var(--c); line-height: 1.2; }
   .stat span { color: var(--muted); font-size: 11px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  @media (max-width: 900px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
   .st-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; vertical-align: middle; }
   .st-open { background: #e3f6ea; color: var(--ok); } .st-closed { background: #fde3e3; color: var(--bad); } .st-archived { background: #eef0f4; color: var(--muted); }
-  .stats { grid-template-columns: 1.2fr repeat(8, minmax(0, 1fr)); }
   .stat.state b { font-size: 18px; padding-top: 3px; } .stat.state.st-open { border-color: #9fd9b4; } .stat.state.st-open b { color: var(--ok); }
   .stat.state.st-closed { border-color: #f1b2b2; } .stat.state.st-closed b { color: var(--bad); } .stat.state.st-archived b { color: var(--muted); }
   .stat.state span { white-space: normal; }
@@ -91,9 +90,9 @@
 <div class="wrap" id="adminView" style="display:none">
   <header>
     <div class="row" style="margin:0">
-      <h1 id="surveyTitle">설문 관리</h1>
-      <select id="surveySel" title="관리할 설문 선택" style="max-width:473px;min-width:340px;width:473px"></select>
-      <button class="btn sm sec" id="svClose" title="응답 접수를 지금 끝내거나 다시 엽니다">강제 마감</button>
+      <h1>설문 관리</h1>
+      <select id="surveySel" title="관리할 설문 선택" style="flex:1 1 340px;max-width:473px;min-width:0"></select>
+      <button class="btn sm danger" id="svClose" title="응답 접수를 지금 끝내거나 다시 엽니다">강제 마감</button>
       <button class="btn sm sec" id="svArchive">보관</button>
       <button class="btn sm danger" id="svDelete">삭제</button>
     </div>
@@ -105,12 +104,6 @@
     </div>
   </header>
 
-  <div class="hint" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-    <b>테스트</b>
-    <button class="btn sm" id="testMake">TEST 설문 만들기 (임의 응답 100건)</button>
-    <button class="btn sm danger" id="testWipe">TEST 설문 일괄 삭제</button>
-    <span class="muted" id="testInfo">모든 문항 유형과 주관식 2개가 들어 있는 시험용 설문을 만들어 통계·AI 기능을 확인할 수 있습니다. 시험용 설문은 이 버튼으로만 한꺼번에 지워지고 실제 설문에는 영향이 없습니다.</span>
-  </div>
   <div class="stats" style="margin-bottom:16px">
     <div class="stat state st-open" id="surveyState"><b id="sState">-</b><span id="sStateSub">설문 상태</span></div>
     <div class="stat"><b id="sTotal">0</b><span>대상자</span></div>
@@ -325,6 +318,8 @@
         <button class="btn sec" id="checkServer">발송 서버 연결 확인</button>
         <button class="btn sec" id="checkAi">AI(Gemini) 연결 확인</button>
         <button class="btn sec" id="migrateBtn" title="예전 구조(config/survey, recipients, responses)의 데이터를 설문 한 건으로 복사">예전 데이터 가져오기</button>
+        <button class="btn sec" id="testWipe" title="예전에 만든 시험용(TEST) 설문과 그 대상자·응답을 한꺼번에 삭제">TEST 설문 일괄 삭제</button>
+        <span class="muted" id="testInfo"></span>
         <span id="quotaInfo" class="muted"></span>
       </div>
       <pre id="aiTestOut" style="display:none;margin:0 0 10px;padding:8px 10px;background:#1e1e1e;color:#ddd;border-radius:8px;font:12px/1.5 Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:12em;overflow:auto"></pre>
@@ -367,9 +362,10 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   /* ================= 공통 ================= */
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // 시각값 통일: Firestore Timestamp, {seconds}, 숫자(ms), 문자열 모두 밀리초로
   const ms = ts => !ts ? 0 : ts.toDate ? ts.toDate().getTime() : (ts.seconds ? ts.seconds * 1000 : new Date(ts).getTime() || 0);
-  const fmt = ts => { if (!ts) return ''; const d = ts.toDate ? ts.toDate() : new Date(ts); return d.toLocaleString('ko-KR', { hour12: false }); };
-  const fmtShort = ts => { if (!ts) return ''; const d = ts.toDate ? ts.toDate() : new Date(ts); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+  const fmt = ts => { const t = ms(ts); return t ? new Date(t).toLocaleString('ko-KR', { hour12: false }) : ''; };
+  const fmtShort = ts => { const t = ms(ts); if (!t) return ''; const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
   async function sha256(str) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -440,6 +436,9 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   let SID = null;                         // 선택한 설문 ID
   let CUR = { title: '', questions: [] }; // 선택한 설문 정의
   let unsubs = [];                        // 실시간 구독 해제 함수
+  let selectSeq = 0;                      // selectSurvey 호출 순번 (빠르게 연달아 바꿀 때 늦게 도착한 이전 설문이 화면을 덮지 않게)
+  let AI_BUSY = null;                     // AI 작업이 진행 중인 설문 ID (한 번에 한 작업만)
+  let staleChecked = '';                  // 마지막으로 AI 결과 최신 여부를 확인한 응답 지문
 
   async function showAdmin() {
     $('loginView').style.display = 'none';
@@ -458,13 +457,16 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     if (SID) $('surveySel').value = SID;
   }
   async function selectSurvey(id) {
-    const s = await store.get(id);
+    const seq = ++selectSeq;
+    let s;
+    try { s = await store.get(id); }
+    catch (err) { await Modal.alert('설문을 읽지 못했습니다: ' + err.message); return; }
+    if (seq !== selectSeq) return;   // 그사이 다른 설문을 골랐으면 이 결과는 버림
     if (!s) { await Modal.alert('설문을 찾을 수 없습니다.'); return; }
     SID = id; CUR = s;
     try { localStorage.setItem('adminSurvey', id); } catch (_) {}
-    history.replaceState(null, '', 'admin.html?s=' + encodeURIComponent(id));
+    history.replaceState(null, '', location.pathname.replace(/[^/]*$/, 'admin.html') + '?s=' + encodeURIComponent(id));
     $('surveySel').value = id;
-    $('surveyTitle').textContent = '설문 관리';
     renderState();
     document.title = CUR.title + ' — 관리';
     $('svArchive').textContent = CUR.status === 'archived' ? '복원' : '보관';
@@ -472,8 +474,9 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     renderCloseBtn();
     unsubs.forEach(u => u()); unsubs = [];
     recipients = []; responses = [];
-    aiPanelReset(); staleChecked = '';   // 다른 설문의 AI 진행 상태·안내는 지움
-    if (AI_BUSY && AI_BUSY !== id) { $('aiSummarize').disabled = false; $('aiReport').disabled = false; }   // 다른 설문에서 돌던 작업 때문에 잠긴 버튼은 이 설문 기준으로 다시 판단
+    staleChecked = '';
+    if (AI_BUSY !== id) aiPanelReset();   // 다른 설문의 AI 진행 상태·안내는 지움 (이 설문의 작업이 돌고 있으면 로그를 그대로 둠)
+    if (AI_BUSY && AI_BUSY === id) { $('aiSummarize').disabled = true; $('aiReport').disabled = true; }   // 이 설문에서 AI 작업이 도는 중이면 버튼 잠금 유지
     renderStats(); renderRecipients(); renderResponses(); renderCharts(); renderReport(); renderAiButtons();
     // orderBy를 쓰지 않습니다: Firestore는 정렬 필드가 없는 문서를 결과에서 빼 버려 예전 데이터가 사라져 보일 수 있음. 화면에서 정렬
     unsubs.push(store.recipients(SID).onSnapshot(snap => {
@@ -551,43 +554,48 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   }
   $('svClose').onclick = async () => {
     if (!SID) return;
-    const st = stateOf(CUR);
+    const sid = SID, cur = CUR, st = stateOf(cur);
     const logEntry = (action, reason) => ({ at: Date.now(), action, reason: reason || '' });
-    if (st === 'open') {
-      const reason = await Modal.prompt(`"${CUR.title}" 설문의 응답 접수를 지금 마감합니다.\n마감하면 링크로 들어와도 제출할 수 없고, 상태가 "마감"으로 바뀝니다. 언제든 "다시 시작"으로 되돌릴 수 있습니다.\n\n마감 사유를 적어 주세요(필수, DB에 기록됩니다).`, '');
-      if (reason === null) return;
-      if (!reason.trim()) return Modal.alert('마감 사유를 적어야 강제 마감할 수 있습니다.');
-      await store.patch(SID, { forceClosed: true, forceClosedAt: Date.now(), forceClosedReason: reason.trim(), closeLog: [...(CUR.closeLog || []), logEntry('close', reason.trim())] });
-      Modal.toast('강제 마감했습니다. 사유가 기록되었습니다.');
-    } else if (st === 'closed') {
-      const byDeadline = !CUR.forceClosed && isClosedSv(CUR);   // 마감일이 지나서 닫힌 경우
-      let patch = { forceClosed: false };
-      if (byDeadline || (CUR.closeAfterDeadline && CUR.deadline && new Date() > new Date(CUR.deadline + 'T23:59:59'))) {
-        const d = await Modal.prompt('마감일이 이미 지났습니다. 새 마감일을 YYYY-MM-DD 형식으로 적으세요. 비워 두면 마감일 없이 계속 진행합니다.', '');
-        if (d === null) return;
-        const v = d.trim();
-        if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return Modal.alert('날짜 형식이 올바르지 않습니다. 예: 2026-10-31');
-        patch.deadline = v; if (!v) patch.closeAfterDeadline = false;
+    try {
+      if (st === 'open') {
+        const reason = await Modal.prompt(`"${cur.title}" 설문의 응답 접수를 지금 마감합니다.\n마감하면 링크로 들어와도 제출할 수 없고, 상태가 "마감"으로 바뀝니다. 언제든 "다시 시작"으로 되돌릴 수 있습니다.\n\n마감 사유를 적어 주세요(필수, DB에 기록됩니다).`, '');
+        if (reason === null) return;
+        if (!reason.trim()) return Modal.alert('마감 사유를 적어야 강제 마감할 수 있습니다.');
+        await store.patch(sid, { forceClosed: true, forceClosedAt: Date.now(), forceClosedReason: reason.trim(), closeLog: [...(cur.closeLog || []), logEntry('close', reason.trim())] });
+        Modal.toast('강제 마감했습니다. 사유가 기록되었습니다.');
+      } else if (st === 'closed') {
+        const patch = { forceClosed: false, forceClosedAt: null, forceClosedReason: '' };
+        const deadlinePassed = cur.closeAfterDeadline && cur.deadline && new Date() > new Date(cur.deadline + 'T23:59:59');
+        if (deadlinePassed) {   // 마감일이 지나 닫힌(또는 강제 마감 중 마감일까지 지난) 경우: 새 마감일이 없으면 다시 열어도 곧바로 마감이 됨
+          const d = await Modal.prompt('마감일이 이미 지났습니다. 새 마감일을 YYYY-MM-DD 형식으로 적으세요. 비워 두면 마감일 없이 계속 진행합니다.', '');
+          if (d === null) return;
+          const v = d.trim();
+          if (v && (!/^\d{4}-\d{2}-\d{2}$/.test(v) || isNaN(new Date(v + 'T00:00:00').getTime()))) return Modal.alert('날짜 형식이 올바르지 않습니다. 예: 2026-10-31');
+          if (v && new Date() > new Date(v + 'T23:59:59')) return Modal.alert('새 마감일이 오늘보다 앞섭니다. 오늘 이후의 날짜를 적으세요.');
+          patch.deadline = v; if (!v) patch.closeAfterDeadline = false;
+        }
+        const reason = await Modal.prompt(`"${cur.title}" 설문의 응답 접수를 다시 엽니다.\n응답이 추가되면 저장된 AI 요약·보고서는 자동으로 지워집니다.\n\n다시 시작 사유(선택, DB에 기록됩니다)`, '');
+        if (reason === null) return;
+        patch.closeLog = [...(cur.closeLog || []), logEntry('reopen', reason.trim())];
+        await store.patch(sid, patch);
+        Modal.toast('설문을 다시 시작했습니다.');
       }
-      const reason = await Modal.prompt(`"${CUR.title}" 설문의 응답 접수를 다시 엽니다.\n응답이 추가되면 저장된 AI 요약·보고서는 자동으로 지워집니다.\n\n다시 시작 사유(선택, DB에 기록됩니다)`, '');
-      if (reason === null) return;
-      patch.closeLog = [...(CUR.closeLog || []), logEntry('reopen', reason.trim())];
-      await store.patch(SID, patch);
-      Modal.toast('설문을 다시 시작했습니다.');
-    }
-    await refreshSurveys(); await selectSurvey(SID);
+    } catch (err) { return Modal.alert('상태 변경 실패: ' + err.message); }
+    await refreshSurveys(); if (SID === sid) await selectSurvey(sid);
   };
   $('svArchive').onclick = async () => {
     if (!SID) return;
     const toArchive = CUR.status !== 'archived';
     if (!await Modal.confirm(toArchive ? '이 설문을 보관할까요? 보관하면 더 이상 응답을 받지 않으며, 대상자·응답·통계는 그대로 볼 수 있습니다.' : '이 설문을 다시 진행 중으로 되돌릴까요?')) return;
-    await store.setStatus(SID, toArchive ? 'archived' : 'active');
-    await refreshSurveys(); await selectSurvey(SID);
+    const sid = SID;
+    try { await store.setStatus(sid, toArchive ? 'archived' : 'active'); } catch (err) { return Modal.alert('상태 변경 실패: ' + err.message); }
+    await refreshSurveys(); if (SID === sid) await selectSurvey(sid);
   };
   $('svDelete').onclick = async () => {
     if (!SID) return;
+    if (AI_BUSY === SID) return Modal.alert('이 설문의 AI 작업이 끝난 뒤에 삭제하세요.');
     if (await Modal.prompt(`"${CUR.title}" 설문과 대상자 ${recipients.length}명, 응답 ${responses.length}건이 모두 삭제되며 되돌릴 수 없습니다.\n삭제하려면 "삭제"라고 입력하세요.`) !== '삭제') return;
-    await store.remove(SID);
+    try { await store.remove(SID); } catch (err) { return Modal.alert('삭제 실패: ' + err.message); }
     SID = null; await refreshSurveys();
     if (surveys.length) await selectSurvey(surveys[0].id); else location.reload();
   };
@@ -614,7 +622,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       for (const sv of list) {
         const [rs, ps] = await Promise.all([store.recipients(sv.id).get(), store.responses(sv.id).get()]);
         const rec = rs.docs.map(d => d.data()), res = ps.docs.map(d => d.data());
-        const last = res.map(r => r.submittedAt).filter(Boolean).map(t => t.toDate ? t.toDate().getTime() : new Date(t).getTime()).sort((a, b) => b - a)[0];
+        const last = res.reduce((m, r) => Math.max(m, ms(r.submittedAt)), 0);
         rows.push({ sv, rec, res, last });
       }
       body.innerHTML = rows.map(({ sv, rec, res, last }, i) => {
@@ -633,25 +641,26 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       body.querySelectorAll('[data-del]').forEach(b => b.onclick = async e => {
         e.stopPropagation(); const r = DB_ROWS[b.dataset.del]; if (!r) return;
         if (await Modal.prompt(`"${r.sv.title || r.sv.id}" 설문(ID ${r.sv.id})과 대상자 ${r.rec.length}명, 응답 ${r.res.length}건을 DB에서 모두 삭제합니다. 되돌릴 수 없습니다.\n삭제하려면 "삭제"라고 입력하세요.`) !== '삭제') return;
+        if (r.sv.id === AI_BUSY) return Modal.alert('이 설문의 AI 작업이 끝난 뒤에 삭제하세요.');
         try { await store.remove(r.sv.id); } catch (err) { return Modal.alert('삭제 실패: ' + err.message); }
         await refreshSurveys();
-        if (r.sv.id === SID) { SID = null; if (surveys.length) await selectSurvey(surveys[0].id); }
+        if (r.sv.id === SID) { SID = null; if (surveys.length) await selectSurvey(surveys[0].id); else return location.reload(); }
         renderDbList();
       });
       body.querySelectorAll('tr[data-sid]').forEach(tr => tr.onclick = async () => { await selectSurvey(tr.dataset.sid); renderDbList(); });
-      try { const cl = await ContactStore.init(db).list(); $('dbLists').textContent = `주소록(contactLists): ${cl.length}개 · 총 ${cl.reduce((n, l) => n + l.members.length, 0)}명`; } catch (_) {}
+      try { const cl = await book.list(); $('dbLists').textContent = `주소록(contactLists): ${cl.length}개 · 총 ${cl.reduce((n, l) => n + l.members.length, 0)}명`; } catch (_) {}
     } catch (err) { body.innerHTML = `<tr><td colspan="14" style="color:var(--bad)">읽기 실패: ${esc(err.message)}</td></tr>`; }
     dbListBusy = false;
   }
   // 설문 한 건의 응답 내용을 표로 펼쳐 보기
   function toggleDbDetail(id, row) {
-    const tr = document.querySelector(`tr.db-detail[data-detail="${id}"]`); if (!tr || !row) return;
+    const tr = document.querySelector(`tr.db-detail[data-detail="${CSS.escape(id)}"]`); if (!tr || !row) return;
     if (tr.style.display !== 'none') { tr.style.display = 'none'; return; }
     const qs = row.sv.questions || [];
     const list = row.res.slice().sort((a, b) => ms(b.submittedAt) - ms(a.submittedAt));
     const cell = v => { const t = Array.isArray(v) ? v.join(', ') : (v == null || v === '' ? '' : String(v)); return `<td style="white-space:normal;max-width:260px" title="${esc(t)}">${esc(t.length > 60 ? t.slice(0, 60) + '…' : t)}</td>`; };
     tr.firstElementChild.innerHTML = list.length ? `<div class="muted" style="margin-bottom:6px">응답 ${list.length}건 · 문항 ${qs.length}개 · 열 제목은 문항 번호와 ID</div>
-      <div class="tbl" style="max-height:420px;overflow:auto"><table style="table-layout:auto;font-size:12px"><thead><tr><th style="white-space:nowrap">제출 시각</th><th>경로</th><th>이름</th><th>소속</th>${qs.map((q, i) => `<th title="${esc(q.title)}">${i + 1}. ${esc(q.title.slice(0, 14))}${q.title.length > 14 ? '…' : ''} <span class="muted">(${esc(q.id)})</span></th>`).join('')}<th>문항에 없는 키</th></tr></thead>
+      <div class="tbl" style="max-height:420px;overflow:auto"><table style="table-layout:auto;font-size:12px"><thead><tr><th style="white-space:nowrap">제출 시각</th><th>경로</th><th>이름</th><th>소속</th>${qs.map((q, i) => { const t = String(q.title || ''); return `<th title="${esc(t)}">${i + 1}. ${esc(t.slice(0, 14))}${t.length > 14 ? '…' : ''} <span class="muted">(${esc(q.id)})</span></th>`; }).join('')}<th>문항에 없는 키</th></tr></thead>
       <tbody>${list.map(r => { const a = r.answers || {}; const extra = Object.keys(a).filter(k => !qs.some(q => q.id === k)); return `<tr><td>${esc(fmt(r.submittedAt))}</td><td>${channelLabel(r)}</td><td>${esc(r.name || '(익명)')}</td><td>${esc(r.group || '')}</td>${qs.map(q => cell(a[q.id])).join('')}<td style="white-space:normal">${extra.map(k => `<code>${esc(k)}</code>=${esc(String(Array.isArray(a[k]) ? a[k].join(', ') : a[k])).slice(0, 30)}`).join(' / ')}</td></tr>`; }).join('')}</tbody></table></div>`
       : '<span class="muted">이 설문에는 응답 문서가 없습니다.</span>';
     tr.style.display = '';
@@ -696,7 +705,8 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   // 지금 열린 관리 화면의 주소에서 자동으로 만듭니다. (예: .../admin.html → .../survey.html)
   const BASE_BAD = !SURVEY_BASE_URL || SURVEY_BASE_URL.includes('아이디') || /github\.com\//.test(SURVEY_BASE_URL) || !/^https?:\/\//.test(SURVEY_BASE_URL);
   const BASE_URL = BASE_BAD ? location.href.split('?')[0].replace(/[^/]*$/, 'survey.html') : SURVEY_BASE_URL;
-  function surveyLink(token) { return BASE_URL + (BASE_URL.includes('?') ? '&' : '?') + 's=' + encodeURIComponent(SID || '') + '&t=' + token; }
+  // sid를 주면 그 설문의 링크 (발송 중 다른 설문으로 바꿔도 원래 설문 링크가 나가도록), 없으면 지금 선택한 설문
+  function surveyLink(token, sid) { return BASE_URL + (BASE_URL.includes('?') ? '&' : '?') + 's=' + encodeURIComponent(sid || SID || '') + '&t=' + encodeURIComponent(token); }
   function openLink() { return BASE_URL + (BASE_URL.includes('?') ? '&' : '?') + 's=' + encodeURIComponent(SID || ''); }
 
   function renderRecipients() {
@@ -731,7 +741,9 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       await navigator.clipboard.writeText(surveyLink(r.id));
       b.textContent = '복사됨'; setTimeout(() => b.textContent = '링크 복사', 1200);
     } else if (b.dataset.act === 'del') {
-      if (await Modal.confirm(`${r.name} (${r.email}) 을(를) 삭제할까요? 제출된 응답은 남습니다.`)) await store.recipients(SID).doc(r.id).delete();
+      if (await Modal.confirm(`${r.name} (${r.email}) 을(를) 삭제할까요? 제출된 응답은 남습니다.`)) {
+        try { await store.recipients(SID).doc(r.id).delete(); } catch (err) { await Modal.alert('삭제 실패: ' + err.message); }
+      }
     } else if (b.dataset.act === 'send') {
       await sendMany([r]);
     }
@@ -745,24 +757,28 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   const emailOk = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
   async function addRecipients(items) {
-    const existing = new Set(recipients.map(r => r.email.toLowerCase()));
+    if (!SID) { await Modal.alert('먼저 설문을 선택하세요.'); return []; }
+    const sid = SID;
+    const existing = new Set(recipients.map(r => String(r.email || '').toLowerCase()));
     let added = 0, dup = 0, bad = 0;
     const createdList = [];
     let batch = db.batch(), inBatch = 0;
-    for (const it of items) {
-      const email = (it.email || '').trim().toLowerCase();
-      const name = (it.name || '').trim();
-      if (!name || !emailOk(email)) { bad++; continue; }
-      if (existing.has(email)) { dup++; continue; }
-      existing.add(email);
-      const id = newToken();
-      const doc = { name, email, group: (it.group || '').trim(), sendStatus: 'pending', sendCount: 0, openCount: 0, sentAt: null, openedAt: null, submittedAt: null };
-      batch.set(store.recipients(SID).doc(id), { ...doc, createdAt: FieldValue.serverTimestamp() });
-      createdList.push({ id, ...doc });
-      added++; inBatch++;
-      if (inBatch >= 400) { await batch.commit(); batch = db.batch(); inBatch = 0; } // Firestore 일괄 쓰기 한도(500) 대비
-    }
-    if (inBatch) await batch.commit();
+    try {
+      for (const it of items) {
+        const email = String(it.email || '').trim().toLowerCase();
+        const name = String(it.name || '').trim();
+        if (!name || !emailOk(email)) { bad++; continue; }
+        if (existing.has(email)) { dup++; continue; }
+        existing.add(email);
+        const id = newToken();
+        const doc = { name, email, group: String(it.group || '').trim(), sendStatus: 'pending', sendCount: 0, openCount: 0, sentAt: null, openedAt: null, submittedAt: null };
+        batch.set(store.recipients(sid).doc(id), { ...doc, createdAt: FieldValue.serverTimestamp() });
+        createdList.push({ id, ...doc });
+        added++; inBatch++;
+        if (inBatch >= 400) { await batch.commit(); batch = db.batch(); inBatch = 0; } // Firestore 일괄 쓰기 한도(500) 대비
+      }
+      if (inBatch) await batch.commit();
+    } catch (err) { await Modal.alert('대상자 저장 실패: ' + err.message); return []; }
     await Modal.alert(`추가 ${added}명 / 중복 ${dup}명 / 형식 오류 ${bad}명`);
     return createdList;
   }
@@ -806,7 +822,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     return { isHeader, name, email, group };
   }
   // CSV 가져오기 부품: 같은 화면 부품(열 선택·미리 보기·버튼)을 대상자 탭과 주소록 탭에서 함께 씁니다.
-  //   ids: { file, area, name, email, group, header, table, summary, buttons[] }
+  //   ids: { file, area, name, email, group, header, table, summary, buttons[], needName }  (needName: 이름이 비면 형식 오류로 봄 — 대상자는 필요, 주소록은 선택)
   //   existing(): 이미 등록된 이메일 Set (판정용)   /   onApply(items, buttonId): 버튼을 눌렀을 때
   function makeCsvImporter(ids, existing, onApply) {
     let rows = [];
@@ -815,10 +831,11 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     function preview() {
       const hdr = $(ids.header).checked, m = map(), data = rows.slice(hdr ? 1 : 0), ex = existing();
       let ok = 0, dup = 0, bad = 0; const seen = new Set();
-      data.forEach(r => { const e = (r[m.email] || '').toLowerCase(), n = r[m.name] || ''; if (!n || !emailOk(e)) bad++; else if (ex.has(e) || seen.has(e)) dup++; else { ok++; seen.add(e); } });
+      const isBad = (n, e) => (ids.needName && !n) || !emailOk(e);
+      data.forEach(r => { const e = (r[m.email] || '').toLowerCase(), n = r[m.name] || ''; if (isBad(n, e)) bad++; else if (ex.has(e) || seen.has(e)) dup++; else { ok++; seen.add(e); } });
       $(ids.table).innerHTML = '<tr><th>#</th><th>이름</th><th>이메일</th><th>소속</th><th>판정</th></tr>' + data.slice(0, 15).map((r, i) => {
         const e = (r[m.email] || '').toLowerCase(), n = r[m.name] || '';
-        const st = (!n || !emailOk(e)) ? '<span class="badge b-bad">형식 오류</span>' : ex.has(e) ? '<span class="badge b-gray">이미 있음</span>' : '<span class="badge b-ok">추가 예정</span>';
+        const st = isBad(n, e) ? '<span class="badge b-bad">형식 오류</span>' : ex.has(e) ? '<span class="badge b-gray">이미 있음</span>' : '<span class="badge b-ok">추가 예정</span>';
         return `<tr><td>${i + 1}</td><td>${esc(n)}</td><td>${esc(r[m.email] || '')}</td><td>${esc(m.group >= 0 ? (r[m.group] || '') : '')}</td><td>${st}</td></tr>`;
       }).join('') + (data.length > 15 ? `<tr><td colspan="5" class="muted">… 외 ${data.length - 15}행</td></tr>` : '');
       $(ids.summary).textContent = `총 ${data.length}행: 추가 예정 ${ok}명 / 이미 있음·중복 ${dup}명 / 형식 오류 ${bad}명`;
@@ -840,7 +857,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     return { reset };
   }
   const recipCsv = makeCsvImporter(
-    { file: 'csvFile', area: 'csvArea', name: 'mapName', email: 'mapEmail', group: 'mapGroup', header: 'csvHeader', table: 'csvTable', summary: 'csvSummary', buttons: ['csvAdd', 'csvAddSend'] },
+    { file: 'csvFile', area: 'csvArea', name: 'mapName', email: 'mapEmail', group: 'mapGroup', header: 'csvHeader', table: 'csvTable', summary: 'csvSummary', buttons: ['csvAdd', 'csvAddSend'], needName: true },
     () => new Set(recipients.map(r => r.email.toLowerCase())),
     async (items, btn) => { const created = await addRecipients(items); if (btn === 'csvAddSend' && created.length) await sendMany(created); });
   $('csvCancel').onclick = recipCsv.reset;
@@ -853,13 +870,14 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   };
 
   /* ================= 메일 발송 (Google Apps Script) ================= */
-  const mailConfigured = () => MAIL_CONFIG.appsScriptUrl && !MAIL_CONFIG.appsScriptUrl.includes('여기에') && MAIL_CONFIG.apiKey && !MAIL_CONFIG.apiKey.startsWith('여기에');
+  const mailConfigured = () => AiClient.configured();   // 발송 서버와 AI가 같은 서버·키를 씀
 
-  // 공통 자리 표시자를 먼저 채우고, 사람별 값({{to_name}} 등)은 서버에서 채웁니다.
-  function fillCommon(tpl) {
+  // 공통 자리 표시자를 먼저 채우고, 사람별 값({{to_name}} 등)은 서버에서 채웁니다. sv: 설문(기본은 지금 선택한 설문)
+  function fillCommon(tpl, sv) {
+    sv = sv || CUR;
     return String(tpl || '')
-      .replace(/{{\s*survey_title\s*}}/g, CUR.title)
-      .replace(/{{\s*deadline\s*}}/g, CUR.deadline || '')
+      .replace(/{{\s*survey_title\s*}}/g, sv.title || '')
+      .replace(/{{\s*deadline\s*}}/g, sv.deadline || '')
       .replace(/{{\s*sender_name\s*}}/g, SENDER_NAME);
   }
   function fillPerson(tpl, r) {
@@ -871,70 +889,64 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       esc(text).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>') + '</div>';
   }
 
-  // Apps Script 웹 앱 호출. Content-Type을 지정하지 않아야(단순 요청) CORS 사전 요청 없이 동작합니다.
+  // 발송 서버 호출은 AiClient.call(survey-store.js)과 같은 코드를 씁니다. HTML 화면이 돌아오면 원인을 발송 로그에도 남깁니다.
   async function callMailServer(payload) {
-    const res = await fetch(MAIL_CONFIG.appsScriptUrl, { method: 'POST', body: JSON.stringify({ key: MAIL_CONFIG.apiKey, ...payload }), redirect: 'follow' });
-    const text = await res.text();
-    let data;
-    try { data = JSON.parse(text); }
-    catch {
-      // 서버가 JSON이 아닌 것(오류 화면, 로그인 화면 등)을 돌려준 경우. 원인 파악을 위해 앞부분을 로그에 남깁니다.
-      // HTML이면 제목과 본문 글자만 뽑아 보여 줍니다(스크립트 코드는 제외).
-      const title = (text.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || '';
-      const bodyText = text.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      log(`서버 응답이 JSON이 아닙니다. 제목: "${title}" / 내용: ${bodyText.slice(0, 300) || '(본문 없음)'}`);
-      const e = new Error('발송 서버 응답을 해석할 수 없습니다. 배포 설정(액세스 권한: 모든 사용자)과 Code.gs 최신 배포 여부를 확인하세요.');
-      e.unparsable = true; throw e;
+    try { return await AiClient.call(payload); }
+    catch (err) {
+      if (err.unparsable) { log('서버 응답이 JSON이 아닙니다. ' + err.htmlInfo); err.message = '발송 서버 응답을 해석할 수 없습니다. 배포 설정(액세스 권한: 모든 사용자)과 Code.gs 최신 배포 여부를 확인하세요.'; }
+      throw err;
     }
-    if (!data.ok) throw new Error(data.error || '발송 서버 오류');
-    return data;
   }
 
   let sending = false;
   async function sendMany(list) {
     if (sending) { await Modal.alert('이미 발송이 진행 중입니다.'); return; }
     if (!list.length) { await Modal.alert('발송할 대상이 없습니다.'); return; }
+    if (!SID) { await Modal.alert('먼저 설문을 선택하세요.'); return; }
     if (!mailConfigured()) { await Modal.alert('firebase-config.js의 MAIL_CONFIG(appsScriptUrl, apiKey)를 먼저 설정하세요.'); return; }
+    if (stateOf(CUR) !== 'open' && !await Modal.confirm(`이 설문은 지금 "${STATE_LABEL[stateOf(CUR)]}" 상태라 받는 사람이 링크를 열어도 응답할 수 없습니다. 그래도 보낼까요?`)) return;
     if (!await Modal.confirm(`${list.length}명에게 설문 메일을 보낼까요?`)) return;
+    const sid = SID, cur = CUR;   // 발송 중 다른 설문으로 바꿔도 원래 설문 기준으로 링크·기록
     sending = true;
     let ok = 0, fail = 0, remaining = null;
-    const size = Math.min(Math.max(Number(MAIL_CONFIG.batchSize) || 30, 1), 100);
-    const subject = fillCommon(MAIL_TEMPLATE.subject), body = fillCommon(MAIL_TEMPLATE.body), htmlBody = toHtml(body);
-    log(`발송 시작: ${list.length}명 (${size}명씩 나누어 전송) / 설문 주소: ${BASE_URL}`);
-    if (!/^https:\/\/[a-z0-9-]+\.github\.io\//i.test(BASE_URL) && !await Modal.confirm(`메일에 들어갈 설문 주소가 GitHub Pages 주소가 아닙니다.\n${BASE_URL}\n\n받는 사람이 이 주소를 열 수 없을 수 있습니다. 그래도 보낼까요?`)) { sending = false; log('발송 취소'); return; }
-    for (let i = 0; i < list.length; i += size) {
-      const chunk = list.slice(i, i + size);
-      let results;
-      try {
-        const data = await callMailServer({
-          action: 'send', subject, body, htmlBody, senderName: SENDER_NAME,
-          recipients: chunk.map(r => ({ id: r.id, name: r.name, email: r.email, link: surveyLink(r.id) }))
-        });
-        results = data.results; remaining = data.remaining;
-      } catch (err) {
-        // 요청 자체가 실패하면 묶음 전체를 실패로 기록
-        if (err.unparsable) {
-          // Apps Script는 응답을 만들기 전에 doPost를 이미 실행하므로, 응답만 못 읽은 경우 메일은 나갔을 가능성이 큽니다.
-          // 실패로 기록하지 않고 "확인 필요"로 남깁니다.
-          results = chunk.map(r => ({ id: r.id, ok: true, unverified: true }));
-        } else results = chunk.map(r => ({ id: r.id, ok: false, error: err.message }));
-      }
-      for (const r of chunk) {
-        const res = results.find(x => x.id === r.id) || { ok: false, error: '응답 없음' };
-        if (res.ok) {
-          // 메일은 이미 나갔으므로, 기록 실패는 화면에만 알리고 다음 사람으로 진행
-          await store.recipients(SID).doc(r.id).update({ sendStatus: 'sent', sentAt: FieldValue.serverTimestamp(), sendCount: FieldValue.increment(1), sendError: res.unverified ? '서버 응답을 읽지 못해 발송 여부를 확인하지 못했습니다. 메일 도착 여부를 확인하세요.' : null })
-            .catch(err => log(`주의: ${r.email} 메일은 발송되었지만 상태 기록에 실패했습니다 — ${err.message}`));
-          ok++; log(`${res.unverified ? '확인 필요(응답 없음, 발송된 것으로 처리)' : '성공'}: ${r.name} <${r.email}> → ${surveyLink(r.id)}`);
-        } else {
-          await store.recipients(SID).doc(r.id).update({ sendStatus: 'failed', sendError: res.error || '', lastTriedAt: FieldValue.serverTimestamp() }).catch(() => {});
-          fail++; log(`실패: ${r.name} <${r.email}> — ${res.error || ''}`);
+    try {
+      const size = Math.min(Math.max(Number(MAIL_CONFIG.batchSize) || 30, 1), 100);
+      const subject = fillCommon(MAIL_TEMPLATE.subject, cur), body = fillCommon(MAIL_TEMPLATE.body, cur), htmlBody = toHtml(body);
+      log(`발송 시작: "${cur.title}" ${list.length}명 (${size}명씩 나누어 전송) / 설문 주소: ${BASE_URL}`);
+      if (!/^https:\/\/[a-z0-9-]+\.github\.io\//i.test(BASE_URL) && !await Modal.confirm(`메일에 들어갈 설문 주소가 GitHub Pages 주소가 아닙니다.\n${BASE_URL}\n\n받는 사람이 이 주소를 열 수 없을 수 있습니다. 그래도 보낼까요?`)) { log('발송 취소'); return; }
+      for (let i = 0; i < list.length; i += size) {
+        const chunk = list.slice(i, i + size);
+        let results;
+        try {
+          const data = await callMailServer({
+            action: 'send', subject, body, htmlBody, senderName: SENDER_NAME,
+            recipients: chunk.map(r => ({ id: r.id, name: r.name, email: r.email, link: surveyLink(r.id, sid) }))
+          });
+          results = data.results || []; remaining = typeof data.remaining === 'number' && data.remaining >= 0 ? data.remaining : null;
+        } catch (err) {
+          // 요청 자체가 실패하면 묶음 전체를 실패로 기록
+          if (err.unparsable) {
+            // Apps Script는 응답을 만들기 전에 doPost를 이미 실행하므로, 응답만 못 읽은 경우 메일은 나갔을 가능성이 큽니다.
+            // 실패로 기록하지 않고 "확인 필요"로 남깁니다.
+            results = chunk.map(r => ({ id: r.id, ok: true, unverified: true }));
+          } else results = chunk.map(r => ({ id: r.id, ok: false, error: err.message }));
         }
+        for (const r of chunk) {
+          const res = results.find(x => x.id === r.id) || { ok: false, error: '응답 없음' };
+          if (res.ok) {
+            // 메일은 이미 나갔으므로, 기록 실패는 화면에만 알리고 다음 사람으로 진행
+            await store.recipients(sid).doc(r.id).update({ sendStatus: 'sent', sentAt: FieldValue.serverTimestamp(), sendCount: FieldValue.increment(1), sendError: res.unverified ? '서버 응답을 읽지 못해 발송 여부를 확인하지 못했습니다. 메일 도착 여부를 확인하세요.' : null })
+              .catch(err => log(`주의: ${r.email} 메일은 발송되었지만 상태 기록에 실패했습니다 — ${err.message}`));
+            ok++; log(`${res.unverified ? '확인 필요(응답 없음, 발송된 것으로 처리)' : '성공'}: ${r.name} <${r.email}> → ${surveyLink(r.id, sid)}`);
+          } else {
+            await store.recipients(sid).doc(r.id).update({ sendStatus: 'failed', sendError: res.error || '', lastTriedAt: FieldValue.serverTimestamp() }).catch(() => {});
+            fail++; log(`실패: ${r.name} <${r.email}> — ${res.error || ''}`);
+          }
+        }
+        if (remaining === 0 && i + size < list.length) { log('오늘 발송 한도를 모두 사용해 나머지는 보내지 않았습니다. 내일 "미발송 전체 발송"으로 이어서 보내세요.'); break; }
       }
-      if (remaining !== null && remaining <= 0 && i + size < list.length) { log('오늘 발송 한도를 모두 사용해 나머지는 보내지 않았습니다. 내일 "미발송 전체 발송"으로 이어서 보내세요.'); break; }
-    }
-    sending = false;
-    log(`발송 종료: 성공 ${ok} / 실패 ${fail}` + (remaining !== null ? ` / 오늘 남은 발송 가능 인원 ${remaining}명` : ''));
+      log(`발송 종료: 성공 ${ok} / 실패 ${fail}` + (remaining !== null ? ` / 오늘 남은 발송 가능 인원 ${remaining}명` : ''));
+    } finally { sending = false; }
     await Modal.alert(`발송 완료\n성공 ${ok}명 / 실패 ${fail}명` + (remaining !== null ? `\n오늘 남은 발송 가능 인원: ${remaining}명` : ''));
   }
   const selectedIds = () => [...document.querySelectorAll('.rchk:checked')].map(c => c.value);
@@ -944,7 +956,11 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   $('delSelected').onclick = async () => {
     const ids = selectedIds(); if (!ids.length) return await Modal.alert('선택된 대상자가 없습니다.');
     if (!await Modal.confirm(`${ids.length}명을 삭제할까요?`)) return;
-    const batch = db.batch(); ids.forEach(id => batch.delete(store.recipients(SID).doc(id))); await batch.commit();
+    try {
+      let batch = db.batch(), n = 0;
+      for (const id of ids) { batch.delete(store.recipients(SID).doc(id)); if (++n >= 400) { await batch.commit(); batch = db.batch(); n = 0; } }   // 일괄 쓰기 한도(500) 대비
+      if (n) await batch.commit();
+    } catch (err) { await Modal.alert('삭제 실패: ' + err.message); }
   };
 
   /* ================= 통계 ================= */
@@ -1003,22 +1019,27 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     if (kind === 'summary') { const sm = ai.summary; if (!sm || !Object.keys(sm).length) return false; if (Array.isArray(ai.summaryFailed) && ai.summaryFailed.length) return false; if (ai.summaryBasis) return sigEq(ai.summaryBasis, sig); return Math.min(...Object.values(sm).map(x => x.at || 0)) > sig.lastMs; }
     const rp = ai.report; if (!rp) return false; if (ai.reportBasis) return sigEq(ai.reportBasis, sig); return (rp.at || 0) > sig.lastMs;
   }
-  // 진행 중 설문이면 AI 사용 불가(버튼도 잠김)
-  const aiAllowed = async () => { if (stateOf(CUR) !== 'open') return true; await Modal.alert('설문이 진행 중입니다. 마감일이 지나거나 보관한 뒤에 AI 요약·보고서를 만들 수 있습니다.'); return false; };
-  let staleChecked = '', AI_BUSY = null;   // 진행 중인 AI 작업의 설문 ID (다른 설문을 보고 있으면 그 설문의 버튼은 정상 갱신)
+  // AI 실행 전 확인: 진행 중 설문이면 불가(버튼도 잠김), 다른 AI 작업이 돌고 있으면 불가(로그·경과 표시를 함께 쓰므로 한 번에 하나만)
+  async function aiAllowed() {
+    if (AI_BUSY) { await Modal.alert(AI_BUSY === SID ? 'AI 작업이 이미 진행 중입니다.' : '다른 설문의 AI 작업이 진행 중입니다. 끝난 뒤에 다시 시도하세요.'); return false; }
+    if (stateOf(CUR) === 'open') { await Modal.alert('설문이 진행 중입니다. 마감일이 지나거나 보관한 뒤에 AI 요약·보고서를 만들 수 있습니다.'); return false; }
+    return true;
+  }
+  // 설문 문서의 ai 항목 전체를 바꿔 씁니다. set(merge)는 안에서 지운 키(summary 등)를 없애지 못하므로 update()로 통째로 덮어씀
+  const writeAi = (sid, ai) => store.doc(sid).update({ ai, updatedAt: FieldValue.serverTimestamp() });
   // 응답이 바뀌었으면(추가·삭제) 예전 AI 결과를 지우고 버튼을 다시 열어 줍니다
   async function checkAiStale() {
-    if (!SID || !CUR.ai) return;
-    const key = SID + ':' + JSON.stringify(respSig()); if (staleChecked === key) return; staleChecked = key;
+    if (!SID || !CUR.ai || AI_BUSY === SID) return;   // 이 설문의 AI 작업이 도는 중에는 건드리지 않음 (끝날 때 지문과 함께 저장됨)
+    const sig = respSig(), key = SID + ':' + JSON.stringify(sig); if (staleChecked === key) return; staleChecked = key;
     const hasSum = CUR.ai.summary && Object.keys(CUR.ai.summary).length, hasRep = !!CUR.ai.report;
-    const partialOk = Array.isArray(CUR.ai.summaryFailed) && CUR.ai.summaryFailed.length && sigEq(CUR.ai.summaryPartialBasis, respSig());   // 일부 실패 상태(응답 그대로)는 지우지 않음
+    const partialOk = Array.isArray(CUR.ai.summaryFailed) && CUR.ai.summaryFailed.length && sigEq(CUR.ai.summaryPartialBasis, sig);   // 일부 실패 상태(응답 그대로)는 지우지 않음
     const dropSum = hasSum && !aiFresh('summary') && !partialOk, dropRep = hasRep && !aiFresh('report');
     if (!dropSum && !dropRep) return;
     const ai = { ...CUR.ai }; if (dropSum) { delete ai.summary; delete ai.summaryBasis; delete ai.summaryFailed; delete ai.summaryPartialBasis; } if (dropRep) { delete ai.report; delete ai.reportBasis; }
-    try { await store.doc(SID).set({ ai }, { merge: true }); CUR.ai = ai; }
-    catch (err) { console.warn('예전 AI 결과 삭제 실패', err); }
-    aiLog(`응답이 바뀌어 예전 AI ${[dropSum && '주관식 요약', dropRep && '보고서'].filter(Boolean).join('·')} 결과를 지웠습니다 (응답 ${respSig().count}건 기준으로 다시 만들 수 있음)`);
-    renderCharts(); renderReport();
+    try { await writeAi(SID, ai); CUR.ai = ai; }
+    catch (err) { console.warn('예전 AI 결과 삭제 실패', err); return; }
+    aiLog(`응답이 바뀌어 예전 AI ${[dropSum && '주관식 요약', dropRep && '보고서'].filter(Boolean).join('·')} 결과를 지웠습니다 (응답 ${sig.count}건 기준으로 다시 만들 수 있음)`);
+    renderCharts(); renderReport(); renderAiButtons();
   }
   function renderAiButtons() {
     const sBtn = $('aiSummarize'), rBtn = $('aiReport'), gate = $('aiGate');
@@ -1037,7 +1058,8 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   // 특정 설문(sid)의 ai 필드에 저장 — 진행 중 다른 설문으로 바꿔도 원래 설문에 저장됨
   async function saveAiTo(sid, base, patch) {
     const ai = Object.assign({}, base || {}, patch);
-    await store.doc(sid).set({ ai }, { merge: true });
+    for (const k of Object.keys(ai)) if (ai[k] === null || ai[k] === undefined) delete ai[k];   // 비운 값(summaryBasis:null 등)은 키째 없앰
+    await writeAi(sid, ai);
     if (sid === SID) CUR.ai = ai;
     return ai;
   }
@@ -1065,63 +1087,78 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   const chainText = (st, kind) => (st.models && st.models[kind] ? st.models[kind].join(' → ') : '서버 설정 순서');
   // 현재 화면이 sid 설문이 아니면 UI 갱신을 건너뜀
   const still = sid => sid === SID;
+  const isTextQ = q => q.type === 'short' || q.type === 'long';
+  // AI 작업이 끝났을 때 공통 뒷정리: 잠금 해제, 그 설문을 보고 있으면 버튼·통계 갱신
+  function aiFinish(sid) {
+    AI_BUSY = null; $('aiSummarize').disabled = false; $('aiReport').disabled = false;
+    renderAiButtons();
+    if (still(sid)) { staleChecked = ''; checkAiStale(); }   // 작업 중 들어온 응답 변화가 있으면 여기서 반영
+  }
+  // AI 요약·보고서는 화면의 소속·경로 필터와 관계없이 이 설문의 응답 전체를 기준으로 합니다(저장된 결과의 기준 지문도 전체 응답)
   $('aiSummarize').onclick = async () => {
-    const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI를 쓸 수 없습니다: ' + (st.error ? AiClient.shortReason(st.error) : 'Gemini API 키가 서버에 설정되지 않았습니다.'));
     if (!await aiAllowed()) return;
-    const list = filteredResponses();
-    const textQs = CUR.questions.filter(q => ['short', 'long', 'text'].includes(q.type));
+    const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI를 쓸 수 없습니다: ' + (st.error ? AiClient.shortReason(st.error) : 'Gemini API 키가 서버에 설정되지 않았습니다.'));
+    if (AI_BUSY) return;   // 상태 확인을 기다리는 사이 다른 작업이 시작됐으면 중단
+    const list = responses;
+    const textQs = CUR.questions.filter(isTextQ);
     if (!textQs.length) return Modal.alert('주관식 문항이 없습니다.');
-    if (!await Modal.confirm(`주관식 ${textQs.length}개 문항의 응답(${list.length}건 기준)을 AI로 요약할까요?\n이름·이메일은 보내지 않고 답변 내용만 보냅니다. 결과는 설문에 저장되어 다시 열어도 유지됩니다.`)) return;
+    if (!await Modal.confirm(`주관식 ${textQs.length}개 문항의 응답(전체 ${list.length}건 기준)을 AI로 요약할까요?\n이름·이메일은 보내지 않고 답변 내용만 보냅니다. 결과는 설문에 저장되어 다시 열어도 유지됩니다.`)) return;
     const sid = SID, cur = CUR, base = CUR.ai, basis = respSig(); AI_BUSY = sid;
-    $('aiSummarize').disabled = true; const summary = Object.assign({}, (base || {}).summary || {}); let done = 0, lastModel = '', firstDone = null;
+    $('aiSummarize').disabled = true; $('aiReport').disabled = true;
+    const summary = Object.assign({}, (base || {}).summary || {}); let done = 0, lastModel = '', firstDone = null;
     const failed = [];   // 실패한 문항 ID
-    // 이전 실행에서 일부만 실패했고 응답이 그대로면, 성공한 문항은 건너뛰고 실패한 문항만 다시 요약
-    const prevPartial = base && Array.isArray(base.summaryFailed) && base.summaryFailed.length && sigEq(base.summaryPartialBasis, basis) ? new Set(base.summaryFailed) : null;
-    aiLogClear(); aiLog(`주관식 요약 시작: ${textQs.length}개 문항, 응답 ${list.length}건 · 모델 순서 ${chainText(st, 'lite')}` + (prevPartial ? ` · 지난번 실패한 ${prevPartial.size}개 문항만 다시 시도` : ''));
-    for (const [i, q] of textQs.entries()) {
-      if (prevPartial && !prevPartial.has(q.id) && summary[q.id]) { done++; if (!firstDone) firstDone = q.id; if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 지난번 결과 유지`); continue; }
-      const answers = list.map(r => r.answers?.[q.id]).filter(a => typeof a === 'string' && a.trim());
-      if (!answers.length) { delete summary[q.id]; if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 답변 없음 → 건너뜀`); continue; }
-      if (still(sid)) aiTimerStart(`AI 요약 중 (${i + 1}/${textQs.length}) ${q.title.slice(0, 30)} · ${answers.length}건`);
-      try {
-        const { model, result, attempts } = await AiClient.run('summarize', { title: cur.title, question: q.title, answers: answers.slice(0, 500) });
-        const sec = aiTimerStop();
-        summary[q.id] = { result, model, at: Date.now(), count: answers.length }; lastModel = model; done++; if (!firstDone) firstDone = q.id;
-        if (still(sid)) { aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 완료 · ${model} · ${sec}초 · 주제 ${(result.themes || []).length}개`); if (attempts && attempts.length) aiLog('  모델 시도: ' + attemptsText(attempts)); }
-      } catch (err) { aiTimerStop(); failed.push(q.id); delete summary[q.id]; if (still(sid)) { aiLog(`(${i + 1}/${textQs.length}) "${q.title.slice(0, 20)}" 실패: ${err.message}`); if (AiClient.lastAttempts) aiLog('  모델 시도: ' + attemptsText(AiClient.lastAttempts)); } await Modal.alert(`"${q.title.slice(0, 30)}" 요약 실패: ${AiClient.shortReason(err.message)}`); }
-    }
-    // 하나라도 실패하면 "완료"로 취급하지 않음: 지문(summaryBasis)을 저장하지 않아 버튼이 다시 열리고, 실패 목록을 남겨 다음에 그 문항만 다시 시도
-    const patch = failed.length ? { summary, summaryBasis: null, summaryFailed: failed, summaryPartialBasis: basis } : { summary, summaryBasis: basis, summaryFailed: [], summaryPartialBasis: null };
-    try { await saveAiTo(sid, base, patch); } catch (err) { await Modal.alert('요약 저장 실패: ' + err.message); }
-    $('aiSummarize').disabled = false; AI_BUSY = null;
-    if (!still(sid)) { renderAiButtons(); return; }   // 진행 중 다른 설문으로 바꿨으면 그 설문 기준으로만 버튼 갱신
+    try {
+      // 이전 실행에서 일부만 실패했고 응답이 그대로면, 성공한 문항은 건너뛰고 실패한 문항만 다시 요약
+      const prevPartial = base && Array.isArray(base.summaryFailed) && base.summaryFailed.length && sigEq(base.summaryPartialBasis, basis) ? new Set(base.summaryFailed) : null;
+      aiLogClear(); aiLog(`주관식 요약 시작: ${textQs.length}개 문항, 응답 ${list.length}건 · 모델 순서 ${chainText(st, 'lite')}` + (prevPartial ? ` · 지난번 실패한 ${prevPartial.size}개 문항만 다시 시도` : ''));
+      for (const [i, q] of textQs.entries()) {
+        const qt = String(q.title || '');
+        if (prevPartial && !prevPartial.has(q.id) && summary[q.id]) { done++; if (!firstDone) firstDone = q.id; if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 지난번 결과 유지`); continue; }
+        const answers = list.map(r => r.answers?.[q.id]).filter(a => typeof a === 'string' && a.trim());
+        if (!answers.length) { delete summary[q.id]; if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 답변 없음 → 건너뜀`); continue; }
+        if (still(sid)) aiTimerStart(`AI 요약 중 (${i + 1}/${textQs.length}) ${qt.slice(0, 30)} · ${answers.length}건`);
+        try {
+          const { model, result, attempts } = await AiClient.run('summarize', { title: cur.title, question: qt, answers: answers.slice(0, 500) });
+          const sec = aiTimerStop();
+          summary[q.id] = { result, model, at: Date.now(), count: answers.length }; lastModel = model; done++; if (!firstDone) firstDone = q.id;
+          if (still(sid)) { aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 완료 · ${model} · ${sec}초 · 주제 ${(result.themes || []).length}개`); if (attempts && attempts.length) aiLog('  모델 시도: ' + attemptsText(attempts)); }
+        } catch (err) { aiTimerStop(); failed.push(q.id); delete summary[q.id]; if (still(sid)) { aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 실패: ${err.message}`); if (AiClient.lastAttempts) aiLog('  모델 시도: ' + attemptsText(AiClient.lastAttempts)); } await Modal.alert(`"${qt.slice(0, 30)}" 요약 실패: ${AiClient.shortReason(err.message)}`); }
+      }
+      // 하나라도 실패하면 "완료"로 취급하지 않음: 지문(summaryBasis)을 저장하지 않아 버튼이 다시 열리고, 실패 목록을 남겨 다음에 그 문항만 다시 시도
+      const patch = failed.length ? { summary, summaryBasis: null, summaryFailed: failed, summaryPartialBasis: basis } : { summary, summaryBasis: basis, summaryFailed: [], summaryPartialBasis: null };
+      try { await saveAiTo(sid, base, patch); } catch (err) { await Modal.alert('요약 저장 실패: ' + err.message); }
+    } finally { aiFinish(sid); }
+    if (!still(sid)) return;   // 진행 중 다른 설문으로 바꿨으면 그 설문 기준으로만 버튼 갱신(aiFinish에서 함)
     if (failed.length) { aiLog(`요약 미완료: ${done}개 성공, ${failed.length}개 실패 — 버튼을 다시 누르면 실패한 문항만 다시 시도합니다`); $('aiInfo').textContent = `AI 요약 미완료 (성공 ${done}, 실패 ${failed.length})`; }
     else { aiLog(`요약 완료: ${done}개 문항`); $('aiInfo').textContent = done ? `AI 요약 ${done}개 문항 완료 (${lastModel})` : ''; }
     renderCharts(); renderAiButtons();
     // 결과가 나온 첫 문항 위치로 화면 이동
-    if (firstDone) { const blk = document.getElementById('t_' + firstDone)?.closest('.q-block') || document.querySelector(`[data-qblock="${firstDone}"]`); if (blk) blk.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (firstDone) { const blk = document.querySelector(`[data-qblock="${CSS.escape(firstDone)}"]`); if (blk) blk.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   };
   // 통계 수치를 보고서용으로 정리
   function statsForReport() {
-    const list = filteredResponses();
+    const list = responses;   // 화면 필터와 무관하게 전체 응답
     const out = { survey: { title: CUR.title, description: CUR.description || '', deadline: CUR.deadline || '' },
       counts: { 대상자: recipients.length, 발송: recipients.filter(r => r.sendStatus === 'sent').length, 제출: recipients.filter(r => r.submittedAt).length, 응답합계: list.length, 메일응답: list.filter(r => channelOf(r) === 'email').length, 공개응답: list.filter(r => channelOf(r) === 'open').length },
       questions: [] };
-    for (const q of CUR.questions) {
-      const item = { 번호: CUR.questions.indexOf(q) + 1, 질문: q.title, 유형: SURVEY_TYPES[q.type] ? SURVEY_TYPES[q.type].name : q.type };
-      if (['short', 'long', 'text'].includes(q.type)) { const s = aiSum(q.id); item.응답수 = list.filter(r => r.answers?.[q.id]).length; if (s) item.AI요약 = s.result; }
+    CUR.questions.forEach((q, i) => {
+      const item = { 번호: i + 1, 질문: q.title, 유형: SURVEY_TYPES[q.type] ? SURVEY_TYPES[q.type].name : q.type };
+      if (isTextQ(q)) { const s = aiSum(q.id); item.응답수 = list.filter(r => r.answers?.[q.id]).length; if (s) item.AI요약 = s.result; }
       else if (q.type === 'scale' || q.type === 'rating') {
-        const vals = list.map(r => Number(r.answers?.[q.id])).filter(v => !isNaN(v) && v > 0);
+        const { min, max } = scaleRange(q);
+        const vals = list.map(r => Number(r.answers?.[q.id])).filter(v => !isNaN(v) && v >= min && v <= max);
         const dist = {}; vals.forEach(v => dist[v] = (dist[v] || 0) + 1);
-        item.응답수 = vals.length; item.평균 = vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : null; item.최대점수 = q.max || 5; item.분포 = dist;
+        item.응답수 = vals.length; item.평균 = vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : null; item.최소점수 = min; item.최대점수 = max; item.분포 = dist;
       } else {
         const dist = {}; list.forEach(r => { const a = r.answers?.[q.id]; if (a == null) return; (Array.isArray(a) ? a : [a]).forEach(v => { const k = String(v).startsWith('기타') ? '기타' : v; dist[k] = (dist[k] || 0) + 1; }); });
         item.응답수 = list.filter(r => r.answers?.[q.id] != null && (!Array.isArray(r.answers[q.id]) || r.answers[q.id].length)).length; item.분포 = dist;
       }
       out.questions.push(item);
-    }
+    });
     return out;
   }
+  // 선형 배율·등급의 점수 범위 (등급은 항상 1부터)
+  const scaleRange = q => ({ min: q.type === 'rating' ? 1 : Number(q.min ?? 1), max: Number(q.max ?? 5) });
   function renderReport() {
     const rp = CUR.ai && CUR.ai.report; if (!rp) { $('reportArea').innerHTML = ''; return; }
     const r = rp.result;
@@ -1132,19 +1169,21 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     </div>`;
     $('reportPrint').onclick = () => {
       const w = window.open('', '_blank');
+      if (!w) return Modal.alert('새 창이 차단되었습니다. 브라우저의 팝업 차단을 풀고 다시 누르세요.');
       w.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${esc(r.title || '결과 보고서')}</title><style>body{font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;max-width:800px;margin:40px auto;line-height:1.7;color:#222}h1{font-size:22px}h2{font-size:16px;margin:22px 0 6px;border-left:4px solid #1f5fbf;padding-left:8px}p.meta,.muted{color:#667;font-size:12px}table{page-break-inside:avoid}</style></head><body><h1>${esc(r.title || '')}</h1><p class="meta">${esc(CUR.title)} · 작성 ${esc(fmt(rp.at))} · AI(${esc(rp.model)}) 초안, 담당자 검토 필요</p>${(r.sections || []).map(sec => `<h2>${esc(sec.heading)}</h2>${sectionHtml(sec)}`).join('')}</body></html>`);
       w.document.close(); setTimeout(() => w.print(), 300);
     };
     $('reportCopy').onclick = async () => { await navigator.clipboard.writeText((r.title || '') + '\n\n' + (r.sections || []).map(sec => '■ ' + sec.heading + '\n' + sec.body).join('\n\n')); Modal.toast('보고서 본문을 복사했습니다'); };
   }
   $('aiReport').onclick = async () => {
-    const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI를 쓸 수 없습니다: ' + (st.error ? AiClient.shortReason(st.error) : 'Gemini API 키가 서버에 설정되지 않았습니다.'));
     if (!await aiAllowed()) return;
+    const st = await AiClient.status(); if (!st.enabled) return Modal.alert('AI를 쓸 수 없습니다: ' + (st.error ? AiClient.shortReason(st.error) : 'Gemini API 키가 서버에 설정되지 않았습니다.'));
+    if (AI_BUSY) return;
     if (!responses.length) return Modal.alert('응답이 없어 보고서를 만들 수 없습니다.');
-    const hasText = CUR.questions.some(q => ['short', 'long', 'text'].includes(q.type)), hasSum = CUR.ai && CUR.ai.summary && Object.keys(CUR.ai.summary).length;
+    const hasText = CUR.questions.some(isTextQ), hasSum = CUR.ai && CUR.ai.summary && Object.keys(CUR.ai.summary).length;
     if (hasText && !hasSum && !await Modal.confirm('주관식 AI 요약이 아직 없습니다. 요약 없이 수치만으로 보고서를 만들까요? (취소 후 "AI 주관식 요약"을 먼저 실행하면 더 충실한 보고서가 됩니다)')) return;
     const sid = SID, cur = CUR, base = CUR.ai, basis = respSig(); AI_BUSY = sid;
-    $('aiReport').disabled = true;
+    $('aiSummarize').disabled = true; $('aiReport').disabled = true;
     const data = statsForReport();
     const textSection = textSummarySection(cur);   // 주관식 절은 AI 요약 결과를 그대로 사용(모델에 다시 쓰게 하지 않음)
     if (textSection) data.questions.forEach(q => { if (q.AI요약) q.AI요약 = { summary: q.AI요약.summary, themes: (q.AI요약.themes || []).map(t => t.theme + ' ' + t.count + '건') }; });   // 모델에는 요약문·주제명만 보내 입력을 줄임
@@ -1178,15 +1217,14 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       const result = { title: `${cur.title} 결과 보고서`, sections };
       const model = [...models].join(' + '), total = elapsed();
       await saveAiTo(sid, base, { report: { result, model, at: Date.now() }, reportBasis: basis });
-      if (!still(sid)) { AI_BUSY = null; renderAiButtons(); return; }
+      if (!still(sid)) return;
       aiLog(`보고서 완료 · ${model} · 총 ${total}초 · 절 ${sections.length}개`);
       $('aiInfo').textContent = `보고서 작성 완료 (${model}, ${total}초)`; renderReport(); $('reportArea').scrollIntoView({ behavior: 'smooth' });
     } catch (err) {
       aiTimerStop();
       if (still(sid)) { aiLog(`(${step}/${totalSteps}) 실패: ${AiClient.shortReason(err.message)} (${err.message.slice(0, 80)})`); if (AiClient.lastAttempts) aiLog('  모델 시도: ' + attemptsText(AiClient.lastAttempts)); $('aiInfo').textContent = ''; }
       await Modal.alert('보고서 작성 실패: ' + AiClient.shortReason(err.message));
-    }
-    AI_BUSY = null; renderAiButtons();
+    } finally { aiFinish(sid); }
   };
   // 저장된 주관식 AI 요약을 보고서 절 하나로 정리 (요약 본문·주제별 응답 수·대표 의견·개선 제안을 그대로 옮김)
   // blocks: 문항별 {question, count, summary, themes[], sentiment, suggestions[]} — 화면·인쇄에서는 요약 상자와 같은 표로, 복사에서는 body(평문)로 사용
@@ -1217,23 +1255,23 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
 
   function renderCharts() {
     try { renderChartsInner(); }
-    catch (err) { console.error(err); $('aiInfo').innerHTML = '<span style="color:var(--bad)">통계 그리기 오류: ' + esc(err.message) + '</span>'; }
+    catch (err) { console.error(err); $('diagArea').innerHTML = '<p style="color:var(--bad)">통계 그리기 오류: ' + esc(err.message) + '</p>'; }
   }
-  // 응답 데이터에 있지만 현재 문항 목록에 없는 키를 찾아 연결(수정)할 수 있게 합니다.
   // 예전 최상위 responses 컬렉션과 다른 설문의 responses에서 이 설문의 응답을 찾아 복사
   async function rescueResponses() {
     $('rescueBtn').disabled = true;
+    const sid = SID;
     try {
       const tokens = new Set(recipients.map(r => r.id));
-      const isMine = r => r.surveyId === SID || (r.token && tokens.has(r.token));
+      const isMine = r => r.surveyId === sid || (r.token && tokens.has(r.token));
       const found = [];
       try { const snap = await db.collection('responses').get(); snap.docs.forEach(d => { if (isMine(d.data())) found.push({ id: d.id, from: 'responses(예전 구조)', data: d.data() }); }); } catch (err) { console.warn('예전 responses 읽기 실패', err); }
-      for (const sv of surveys) { if (sv.id === SID) continue; try { const snap = await store.responses(sv.id).get(); snap.docs.forEach(d => { if (isMine(d.data())) found.push({ id: d.id, from: `surveys/${sv.id}/responses`, data: d.data() }); }); } catch (_) {} }
-      if (!found.length) return await Modal.alert('이 설문의 대상자 토큰이나 설문 ID와 일치하는 응답을 다른 위치에서 찾지 못했습니다.\n\nFirebase 콘솔 > Firestore Database에서 responses 컬렉션과 surveys/' + SID + '/responses를 직접 확인해 주세요. 응답 화면에서 제출은 되었는데 문서가 없다면 그때의 Firestore 규칙이 저장을 막았을 가능성이 있습니다.');
+      for (const sv of surveys) { if (sv.id === sid) continue; try { const snap = await store.responses(sv.id).get(); snap.docs.forEach(d => { if (isMine(d.data())) found.push({ id: d.id, from: `surveys/${sv.id}/responses`, data: d.data() }); }); } catch (_) {} }
+      if (!found.length) return await Modal.alert('이 설문의 대상자 토큰이나 설문 ID와 일치하는 응답을 다른 위치에서 찾지 못했습니다.\n\nFirebase 콘솔 > Firestore Database에서 responses 컬렉션과 surveys/' + sid + '/responses를 직접 확인해 주세요. 응답 화면에서 제출은 되었는데 문서가 없다면 그때의 Firestore 규칙이 저장을 막았을 가능성이 있습니다.');
       const by = {}; found.forEach(f => by[f.from] = (by[f.from] || 0) + 1);
-      if (!await Modal.confirm(`응답 ${found.length}건을 찾았습니다.\n` + Object.entries(by).map(([k, v]) => `- ${k}: ${v}건`).join('\n') + `\n\n이 설문(surveys/${SID}/responses)으로 복사할까요? 원본은 그대로 둡니다.`)) return;
+      if (!await Modal.confirm(`응답 ${found.length}건을 찾았습니다.\n` + Object.entries(by).map(([k, v]) => `- ${k}: ${v}건`).join('\n') + `\n\n이 설문(surveys/${sid}/responses)으로 복사할까요? 원본은 그대로 둡니다.`)) return;
       let batch = db.batch(), n = 0;
-      for (const f of found) { batch.set(store.responses(SID).doc(f.id), { ...f.data, legacy: true, surveyId: SID }); if (++n >= 400) { await batch.commit(); batch = db.batch(); n = 0; } }
+      for (const f of found) { batch.set(store.responses(sid).doc(f.id), { ...f.data, legacy: true, surveyId: sid }); if (++n >= 400) { await batch.commit(); batch = db.batch(); n = 0; } }
       if (n) await batch.commit();
       await Modal.alert(`응답 ${found.length}건을 복사했습니다. 통계가 다시 계산됩니다.`);
     } catch (err) { await Modal.alert('응답 찾기 실패: ' + err.message); }
@@ -1295,8 +1333,8 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     renderDiag(list);
     $('statsArea').innerHTML = CUR.questions.map((q, i) => {
       let inner = '';
-      if (q.type === 'short' || q.type === 'long' || q.type === 'text') {
-        const items = list.map(r => r.answers?.[q.id]).filter(Boolean);
+      if (isTextQ(q)) {
+        const items = list.map(r => r.answers?.[q.id]).filter(a => typeof a === 'string' && a.trim());
         inner = aiSummaryHtml(q.id) + (items.length ? `<details${aiSum(q.id) ? '' : ' open'}><summary class="muted" style="cursor:pointer">응답 원문 ${items.length}건</summary><ul class="text-list">${items.map(t => `<li>${esc(t)}</li>`).join('')}</ul></details>` : '<p class="muted">응답 없음</p>');
       } else {
         inner = `<div class="chart-wrap"><canvas id="c_${q.id}"></canvas></div><div class="tbl"><table id="t_${q.id}"></table></div>`;
@@ -1305,20 +1343,20 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     }).join('');
 
     for (const q of CUR.questions) {
-      if (q.type === 'short' || q.type === 'long' || q.type === 'text') continue;
+      if (isTextQ(q)) continue;
       let labels, counts, extra = '';
       const numeric = q.type === 'scale' || q.type === 'rating';
       if (numeric) {
-        const min = q.type === 'rating' ? 1 : (q.min ?? 1), max = q.max ?? 5;
+        const { min, max } = scaleRange(q);
         labels = []; counts = [];
         for (let v = min; v <= max; v++) { labels.push(String(v)); counts.push(list.filter(r => Number(r.answers?.[q.id]) === v).length); }
-        const vals = list.map(r => Number(r.answers?.[q.id])).filter(v => !isNaN(v) && v >= min);
+        const vals = list.map(r => Number(r.answers?.[q.id])).filter(v => !isNaN(v) && v >= min && v <= max);
         const avg = vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
         extra = `<tr><th>평균</th><td colspan="2"><b>${avg.toFixed(2)}</b> / ${max} (응답 ${vals.length}건)</td></tr>`;
       } else {
         // 옵션 기준 집계, '기타: ...' 는 '기타' 로 묶음
         const norm = v => (typeof v === 'string' && v.startsWith('기타')) ? '기타' : v;
-        labels = q.options.slice(); if (q.allowOther && !labels.includes('기타')) labels.push('기타'); counts = labels.map(() => 0);
+        labels = (q.options || []).slice(); if (q.allowOther && !labels.includes('기타')) labels.push('기타'); counts = labels.map(() => 0);
         list.forEach(r => {
           let a = r.answers?.[q.id]; if (a == null) return;
           (Array.isArray(a) ? a : [a]).forEach(v => { const i = labels.indexOf(norm(v)); if (i >= 0) counts[i]++; });
@@ -1385,85 +1423,20 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   };
   $('printBtn').onclick = () => window.print();
 
-  /* ================= TEST 설문 (시험용 데이터) ================= */
-  const TEST_FLAG = 'isTest';
-  function makeTestSurvey() {
-    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-    const weighted = ws => { const t = ws.reduce((a, b) => a + b, 0); let r = Math.random() * t; for (let i = 0; i < ws.length; i++) { r -= ws[i]; if (r < 0) return i; } return ws.length - 1; };
-    const def = { title: 'TEST 설문 (임의 데이터 100건)', description: '통계·AI 기능 확인용 시험 설문입니다. 실제 응답이 아닙니다.', deadline: new Date(Date.now() - 86400000).toISOString().slice(0, 10), closeAfterDeadline: true, openEnabled: true, status: 'active', [TEST_FLAG]: true,
-      questions: [
-        { id: 'tq1', type: 'single', title: '참여하신 교육 과정은 무엇입니까?', required: true, options: ['공정안전관리(PSM) 기본', '위험성평가 실무', '산업안전보건법 개정 사항'], allowOther: true },
-        { id: 'tq2', type: 'scale', title: '교육 내용은 업무에 얼마나 도움이 되었습니까?', required: true, min: 1, max: 5, labels: ['전혀 도움이 안 됨', '매우 도움이 됨'] },
-        { id: 'tq3', type: 'rating', title: '강사의 전달력을 별점으로 평가해 주세요.', required: true, max: 5, icon: 'star' },
-        { id: 'tq4', type: 'multi', title: '앞으로 듣고 싶은 주제를 모두 골라 주세요.', required: false, options: ['화학 물질 관리', '밀폐 공간 작업', '전기 안전', '근골격계 질환 예방', '사고 사례 분석'] },
-        { id: 'tq5', type: 'dropdown', title: '근무 지역을 선택하세요.', required: true, options: ['서울', '경기', '충청', '영남', '호남', '강원·제주'] },
-        { id: 'tq6', type: 'short', title: '교육 중 가장 기억에 남는 내용을 한 줄로 적어 주세요.', required: false },
-        { id: 'tq7', type: 'long', title: '교육 개선을 위한 의견을 자유롭게 적어 주세요.', required: false }
-      ] };
-    const groups = ['안전팀', '생산1팀', '생산2팀', '품질팀', '설비팀', '연구소', '경영지원'];
-    const surnames = '김이박최정강조윤장임한오서신권황안송류전홍'.split(''), given = ['민수', '서연', '지훈', '수빈', '현우', '지민', '예은', '도현', '하은', '준호', '유진', '성민', '가영', '태현', '소희', '재원', '은지', '동현', '미래', '승현'];
-    const shortPool = ['위험성평가 5단계 절차', '아차 사고 사례 분석', '화학 물질 MSDS 읽는 법', '밀폐 공간 가스 측정 실습', '강사의 현장 경험담', '개정 법령 벌칙 조항', '사고 영상 시청', '조별 토론', '체크리스트 작성 실습', '보호구 착용 실습', '중대재해처벌법 사례', '위험 요인 발굴 방법', '작업 전 안전 점검(TBM)', '안전 문화 사례', '기억에 남는 것이 없음'];
-    const longPool = [
-      '실습 시간이 너무 짧았습니다. 이론보다 현장 사례와 실습 비중을 늘려 주세요.', '강의 자료를 미리 배포해 주시면 예습이 가능할 것 같습니다.', '점심 이후 시간대는 집중이 어려웠습니다. 쉬는 시간을 조금 더 자주 주면 좋겠습니다.',
-      '우리 사업장 규모에 맞는 사례가 부족했습니다. 중소기업 사례를 더 다뤄 주세요.', '강사님 설명이 명확해서 이해가 잘 되었습니다. 감사합니다.', '교육장이 좁고 더웠습니다. 환경 개선이 필요합니다.',
-      '법령 개정 내용을 표로 정리해 주셔서 유용했습니다.', '온라인으로도 들을 수 있게 해 주세요. 지방에서 오기 힘듭니다.', '교재에 오타가 여러 곳 있었습니다. 검수를 부탁드립니다.',
-      '조별 토론이 좋았지만 시간이 부족했습니다.', '위험성평가 양식을 실제로 작성해 보는 시간이 가장 도움이 되었습니다.', '내용이 전반적으로 만족스럽습니다. 다음 과정도 참여하고 싶습니다.',
-      '심화 과정을 별도로 개설해 주시면 좋겠습니다.', '동영상 자료의 화질이 좋지 않았습니다.', '수료증을 현장에서 바로 받을 수 있으면 좋겠습니다.', '없음', '특별한 의견 없습니다.',
-      '교육 시간이 하루로는 부족합니다. 이틀 과정으로 늘려 주세요.', '질의응답 시간이 충분해서 좋았습니다.', '주차 공간이 부족해 불편했습니다.'];
-    const recipients = [], responses = [];
-    for (let i = 0; i < 100; i++) {
-      const name = pick(surnames) + pick(given), email = `test${String(i + 1).padStart(3, '0')}@example.com`, group = pick(groups);
-      const submitted = i < 85;                       // 85명 제출, 15명 미제출
-      const opened = submitted || i < 92;
-      const ts = Date.now() - Math.floor(Math.random() * 7 * 86400000);
-      recipients.push({ id: 'tt' + String(i + 1).padStart(3, '0'), data: { name, email, group, createdAt: firebase.firestore.Timestamp.fromMillis(ts - 3600000), sendStatus: 'sent', sentAt: firebase.firestore.Timestamp.fromMillis(ts - 3000000), sendCount: 1, openCount: opened ? 1 + Math.floor(Math.random() * 3) : 0, openedAt: opened ? firebase.firestore.Timestamp.fromMillis(ts - 1000000) : null, submittedAt: submitted ? firebase.firestore.Timestamp.fromMillis(ts) : null, sendError: null } });
-      if (submitted) {
-        const c = weighted([40, 35, 20, 5]);
-        const isOpen = i >= 70;                     // 70건 메일, 15건 공개 응답
-        responses.push({ token: isOpen ? null : 'tt' + String(i + 1).padStart(3, '0'), channel: isOpen ? 'open' : 'email', name, email: isOpen ? null : email, group,
-          answers: { tq1: c === 3 ? '기타: ' + pick(['화재 예방', '건설 안전', '보건 관리']) : def.questions[0].options[c],
-            tq2: 1 + weighted([3, 7, 20, 40, 30]), tq3: 1 + weighted([2, 5, 18, 40, 35]),
-            tq4: Math.random() < 0.1 ? null : def.questions[3].options.filter(() => Math.random() < 0.4).slice(0, 3),
-            tq5: def.questions[4].options[weighted([30, 25, 12, 15, 10, 8])],
-            tq6: Math.random() < 0.25 ? null : pick(shortPool), tq7: Math.random() < 0.3 ? null : pick(longPool) },
-          userAgent: 'TEST', isTest: true, submittedAt: firebase.firestore.Timestamp.fromMillis(ts) });
-      }
-    }
-    return { def, recipients, responses };
-  }
-  $('testMake').onclick = async () => {
-    if (!await Modal.confirm('모든 문항 유형과 주관식 2개가 들어 있는 TEST 설문을 만들고, 대상자 100명(제출 85명)과 임의 응답 85건을 넣습니다. 진행할까요?')) return;
-    $('testMake').disabled = true; $('testInfo').textContent = 'TEST 설문을 만드는 중…';
-    try {
-      const { def, recipients: rs, responses: rp } = makeTestSurvey();
-      const id = await store.create(def, 'test-' + Date.now().toString(36));
-      let batch = db.batch(), n = 0;
-      const flush = async () => { await batch.commit(); batch = db.batch(); n = 0; };
-      for (const r of rs) { batch.set(store.recipients(id).doc(r.id), r.data); if (++n >= 400) await flush(); }
-      for (const r of rp) { batch.set(store.responses(id).doc(), r); if (++n >= 400) await flush(); }
-      if (n) await flush();
-      await refreshSurveys(); await selectSurvey(id);
-      $('testInfo').textContent = `TEST 설문을 만들었습니다 (대상자 ${rs.length}명, 응답 ${rp.length}건). 통계 탭과 AI 기능을 확인해 보세요.`;
-    } catch (err) {
-      $('testInfo').textContent = '';
-      // 도중에 실패하면 반쯤 만들어진 TEST 설문을 지웁니다
-      try { const half = (await store.list(true)).filter(x => x[TEST_FLAG] && x.id.startsWith('test-')); for (const h of half) { const rc = await store.responses(h.id).limit(1).get(); if (rc.empty) await store.remove(h.id); } await refreshSurveys(); } catch (_) {}
-      const perm = /permission|insufficient/i.test(err.message);
-      await Modal.alert('TEST 설문 생성 실패: ' + err.message + (perm ? '\n\nFirestore 규칙이 과거 시각의 응답 저장을 막고 있습니다. Firebase 콘솔 > Firestore Database > 규칙에 새 firestore.rules 내용을 붙여 넣고 "게시"한 뒤 다시 시도하세요.' : ''));
-    }
-    $('testMake').disabled = false;
-  };
+  /* ================= 예전 TEST 설문 일괄 삭제 ================= */
+  // 예전 "TEST 설문 만들기"로 만든 시험용 설문(isTest 표시 또는 ID가 test-로 시작)만 지웁니다. 만드는 기능은 없앴고 삭제 도구만 남김
   $('testWipe').onclick = async () => {
     await refreshSurveys();
-    const tests = surveys.filter(x => x[TEST_FLAG] || String(x.id).startsWith('test-'));
+    const tests = surveys.filter(x => x.isTest || String(x.id).startsWith('test-'));
     if (!tests.length) return Modal.alert('삭제할 TEST 설문이 없습니다.');
+    if (tests.some(t => t.id === AI_BUSY)) return Modal.alert('TEST 설문의 AI 작업이 끝난 뒤에 삭제하세요.');
     if (!await Modal.confirm(`TEST 설문 ${tests.length}건(${tests.map(x => x.title).join(', ')})과 그 대상자·응답을 모두 삭제합니다. 실제 설문은 건드리지 않습니다. 진행할까요?`)) return;
     $('testWipe').disabled = true; $('testInfo').textContent = 'TEST 설문을 지우는 중…';
     try {
       for (const t of tests) await store.remove(t.id);
       if (tests.some(t => t.id === SID)) SID = null;
       await refreshSurveys();
-      if (SID) await selectSurvey(SID); else if (surveys.length) await selectSurvey(surveys[0].id); else location.reload();
+      if (SID) await selectSurvey(SID); else if (surveys.length) await selectSurvey(surveys[0].id); else return location.reload();
       $('testInfo').textContent = `TEST 설문 ${tests.length}건을 삭제했습니다.`;
     } catch (err) { $('testInfo').textContent = ''; await Modal.alert('삭제 실패: ' + err.message); }
     $('testWipe').disabled = false;
@@ -1495,10 +1468,11 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     await refreshLists(AB.id);
     if (msg) await Modal.alert(msg);
   }
+  // 주소록은 이메일만 있으면 받습니다(이름은 비워도 됨) — ContactStore.normalize와 같은 기준으로 셈
   function addToBook(items) {
     const before = AB.members.length;
     const merged = book.normalize(AB.members.concat(items));
-    const bad = items.filter(it => !it.name || !emailOk(String(it.email || '').trim().toLowerCase())).length;
+    const bad = items.filter(it => !emailOk(String(it.email || '').trim().toLowerCase())).length;
     return saveBook(merged, `추가 ${merged.length - before}명 / 이미 있음·중복 ${items.length - bad - (merged.length - before)}명 / 형식 오류 ${bad}명`);
   }
   $('abSel').onchange = e => { AB = lists.find(l => l.id === e.target.value) || null; renderBook(); };
@@ -1572,7 +1546,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
       <tr><th>발송 서버 API 키</th><td>${mask(MAIL_CONFIG.apiKey)}</td></tr>
       <tr><th>발신자 이름 / 묶음 크기</th><td>${esc(SENDER_NAME)} / ${MAIL_CONFIG.batchSize}명</td></tr>
       <tr><th>설문 페이지 주소(메일 링크에 사용)</th><td><a href="${esc(BASE_URL)}" target="_blank">${esc(BASE_URL)}</a> ${BASE_BAD ? '<span class="badge b-warn">자동 감지</span> <span class="muted">firebase-config.js의 SURVEY_BASE_URL(' + esc(SURVEY_BASE_URL) + ')이 올바르지 않아 현재 관리 화면 주소로부터 만들었습니다. 이 값을 그대로 SURVEY_BASE_URL에 넣어 두면 경고가 사라집니다.</span>' : mask('ok')}</td></tr>
-      <tr><th>선택한 설문</th><td>${esc(CUR.title)} <span class="muted">(ID: ${esc(SID || '-')})</span> / 마감 ${esc(CUR.deadline || '없음')} / ${CUR.status === 'archived' ? '<span class="badge b-gray">보관됨</span>' : '<span class="badge b-ok">진행 중</span>'}</td></tr>
+      <tr><th>선택한 설문</th><td>${esc(CUR.title)} <span class="muted">(ID: ${esc(SID || '-')})</span> / 마감 ${esc(CUR.deadline || '없음')} / ${SID ? `<span class="st-badge st-${stateOf(CUR)}">${STATE_LABEL[stateOf(CUR)]}</span>` : '-'}</td></tr>
       <tr><th>문항 수</th><td>${CUR.questions.length}개</td></tr>
       <tr><th>공개 응답</th><td>${CUR.openEnabled === false ? '<span class="badge b-gray">사용 안 함</span> 설문 편집기의 "공개 응답 허용"을 켜면 됩니다.' : '<span class="badge b-ok">사용 중</span> 메일 링크 없이 접속한 사람도 이름·소속을 적고 응답할 수 있습니다.'}</td></tr>`;
     // 공개 설문 링크와 QR 코드
@@ -1594,7 +1568,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     $('quotaInfo').textContent = '확인 중…';
     try {
       const d = await callMailServer({ action: 'quota' });
-      $('quotaInfo').innerHTML = `연결 정상 — 오늘 남은 발송 가능 인원 ${d.remaining}명 · 서버 코드 ${d.version ? '<span class="badge b-ok">' + esc(d.version) + '</span>' : '<span class="badge b-bad">구버전</span> <span class="muted">새 Code.gs가 배포되지 않았습니다. 배포 관리 > 편집 > 새 버전 > 배포</span>'} · AI 키 ${d.version ? (d.ai ? '<span class="badge b-ok">있음</span>' : '<span class="badge b-bad">없음</span> <span class="muted">스크립트 속성 GEMINI_API_KEY 확인</span>') : '-'}`;
+      $('quotaInfo').innerHTML = `연결 정상 — 오늘 남은 발송 가능 인원 ${typeof d.remaining === 'number' && d.remaining >= 0 ? d.remaining + '명' : '확인 불가'} · 서버 코드 ${d.version ? '<span class="badge b-ok">' + esc(d.version) + '</span>' : '<span class="badge b-bad">구버전</span> <span class="muted">새 Code.gs가 배포되지 않았습니다. 배포 관리 > 편집 > 새 버전 > 배포</span>'} · AI 키 ${d.version ? (d.ai ? '<span class="badge b-ok">있음</span>' : '<span class="badge b-bad">없음</span> <span class="muted">스크립트 속성 GEMINI_API_KEY 확인</span>') : '-'}`;
     } catch (err) { $('quotaInfo').textContent = '연결 실패: ' + err.message; }
   };
   $('testMail').onclick = async () => {
@@ -1607,8 +1581,8 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
         action: 'send', subject: '[테스트] ' + fillCommon(MAIL_TEMPLATE.subject), body, htmlBody: toHtml(body), senderName: SENDER_NAME,
         recipients: [{ id: 'test', name: '테스트', email, link: surveyLink('TEST_TOKEN') }]
       });
-      const r = d.results[0];
-      await Modal.alert(r.ok ? `테스트 메일을 보냈습니다. 받은 편지함을 확인하세요.\n오늘 남은 발송 가능 인원: ${d.remaining}명` : '발송 실패: ' + r.error);
+      const r = (d.results || [])[0];
+      await Modal.alert(r && r.ok ? `테스트 메일을 보냈습니다. 받은 편지함을 확인하세요.` + (typeof d.remaining === 'number' && d.remaining >= 0 ? `\n오늘 남은 발송 가능 인원: ${d.remaining}명` : '') : '발송 실패: ' + (r ? r.error : '서버가 결과를 돌려주지 않았습니다.'));
     } catch (err) { await Modal.alert('발송 실패: ' + err.message); }
   };
 

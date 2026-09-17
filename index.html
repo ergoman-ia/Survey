@@ -12,7 +12,7 @@
   - 오른쪽 위 "설문 편집 페이지"(editor.html), "관리자 모드"(admin.html).
 -->
 <style>
-  :root { --c: #1f5fbf; --bg: #f4f6fa; --line: #dde3ec; --text: #222; --muted: #667; --ok: #1a9c4b; --warn: #d98a00; }
+  :root { --c: #1f5fbf; --bg: #f4f6fa; --line: #dde3ec; --text: #222; --muted: #667; --ok: #1a9c4b; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; line-height: 1.6; }
   .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 60px; }
@@ -35,7 +35,7 @@
   .row .t:hover { color: var(--c); }
   .row .m { font-size: 13px; color: var(--muted); margin-top: 2px; }
   .badge { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; vertical-align: middle; margin-right: 6px; }
-  .b-open { background: #e3f6ea; color: var(--ok); } .b-closed { background: #eef0f4; color: var(--muted); } .b-mail { background: #fff3dc; color: var(--warn); }
+  .b-open { background: #e3f6ea; color: var(--ok); } .b-closed { background: #eef0f4; color: var(--muted); }
   .btn { display: inline-block; padding: 9px 16px; border-radius: 8px; background: var(--c); color: #fff; font-weight: 600; text-decoration: none; font-size: 14px; white-space: nowrap; }
   .btn.sec { background: #fff; color: var(--c); border: 1px solid var(--c); }
   .btn.off { background: #c5ccd6; pointer-events: none; }
@@ -89,7 +89,7 @@
   function questionsHtml(sv) {
     return sv.questions.map((q, i) => {
       let body = '';
-      if (q.options) body = `<ul class="opts">${q.options.map(o => `<li>${esc(o)}</li>`).join('')}${q.allowOther ? '<li>기타 (직접 입력)</li>' : ''}</ul>`;
+      if (q.type === 'single' || q.type === 'multi' || q.type === 'dropdown') body = `<ul class="opts">${(q.options || []).map(o => `<li>${esc(o)}</li>`).join('')}${q.allowOther ? '<li>기타 (직접 입력)</li>' : ''}</ul>`;
       else if (q.type === 'scale') body = `<div class="opts" style="padding-left:0">${q.min ?? 1} ~ ${q.max ?? 5}점${q.labels && (q.labels[0] || q.labels[1]) ? ` (${esc(q.labels[0])} ~ ${esc(q.labels[1])})` : ''}</div>`;
       else if (q.type === 'rating') body = `<div class="opts" style="padding-left:0;color:#f5b301;font-size:18px">${(q.icon === 'heart' ? '♥' : q.icon === 'number' ? '' : '★').repeat(q.icon === 'number' ? 0 : (q.max ?? 5))}${q.icon === 'number' ? `1 ~ ${q.max ?? 5}` : ''}</div>`;
       else if (q.type === 'short') body = `<div class="opts" style="padding-left:0">짧은 글로 답변</div>`;
@@ -147,23 +147,32 @@
             <button data-tab="all"${tab === 'all' ? ' class="on"' : ''}>전체 ${all.length}</button>
           </div>
           <input type="search" id="kw" placeholder="설문 제목 검색" value="${esc(keyword)}">
-          <span class="count">${list.length}건</span>
+          <span class="count" id="cnt">${list.length}건</span>
         </div>
-        <div id="rows">
-          ${page.map(sv => `<div class="row">
+        <div id="rows">${rowsHtml(page)}</div>
+        <div id="moreWrap">${moreHtml(list)}</div>
+      </div>`;
+    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; shown = PAGE; renderList(); });
+    // 검색 입력은 다시 그리지 않고 목록만 갱신 (입력 칸을 새로 만들면 한글 조합 중인 글자가 깨짐)
+    document.getElementById('kw').oninput = e => { keyword = e.target.value; shown = PAGE; renderRows(); };
+    bindMore();
+  }
+  function rowsHtml(page) {
+    return page.map(sv => `<div class="row">
               <div>
                 <a class="t" href="index.html?s=${encodeURIComponent(sv.id)}">${esc(sv.title || '(제목 없음)')}</a>
                 <div class="m">${badge(sv)}${sv.deadline ? '마감 ' + esc(sv.deadline) + ' · ' : ''}${sv.questions.length}문항${sv.createdAtMs ? ' · 만든 날 ' + fmtDate(sv.createdAtMs) : ''}${sv.openEnabled === false ? ' · 메일 링크 전용' : ''}</div>
               </div>
               <div>${answerButton(sv, false)} <a class="btn sec" href="index.html?s=${encodeURIComponent(sv.id)}">문항 보기</a></div>
-            </div>`).join('') || `<div class="empty">${all.length ? '조건에 맞는 설문이 없습니다.' : '아직 설문이 없습니다. 설문 편집 페이지에서 설문을 만들면 이곳에 표시됩니다.'}</div>`}
-        </div>
-        ${list.length > shown ? `<div class="more"><button class="btn sec" id="moreBtn">더 보기 (${list.length - shown}건 남음)</button></div>` : ''}
-      </div>`;
-    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; shown = PAGE; renderList(); });
-    const kw = document.getElementById('kw');
-    kw.oninput = e => { keyword = e.target.value; shown = PAGE; const pos = e.target.selectionStart; renderList(); const k2 = document.getElementById('kw'); k2.focus(); k2.setSelectionRange(pos, pos); };
-    const more = document.getElementById('moreBtn'); if (more) more.onclick = () => { shown += PAGE; renderList(); };
+            </div>`).join('') || `<div class="empty">${all.length ? '조건에 맞는 설문이 없습니다.' : '아직 설문이 없습니다. 설문 편집 페이지에서 설문을 만들면 이곳에 표시됩니다.'}</div>`;
+  }
+  function moreHtml(list) { return list.length > shown ? `<div class="more"><button class="btn sec" id="moreBtn">더 보기 (${list.length - shown}건 남음)</button></div>` : ''; }
+  function bindMore() { const more = document.getElementById('moreBtn'); if (more) more.onclick = () => { shown += PAGE; renderRows(); }; }
+  function renderRows() {
+    const list = filtered();
+    document.getElementById('rows').innerHTML = rowsHtml(list.slice(0, shown));
+    document.getElementById('cnt').textContent = `${list.length}건`;
+    document.getElementById('moreWrap').innerHTML = moreHtml(list); bindMore();
   }
 
   try {

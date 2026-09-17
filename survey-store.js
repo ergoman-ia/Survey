@@ -55,11 +55,16 @@ function newSurveyId() {
   return 's' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + Math.random().toString(36).slice(2, 7);
 }
 
-// 설문 정의에서 저장할 필드만 추립니다(문항 초안 표시 등 편집용 값 제외)
+// 설문 정의에서 편집기가 관리하는 필드만 추립니다.
+// createdAt 같은 Firestore 시각값이나 관리 화면이 쓰는 값(ai, forceClosed, closeLog 등)은 여기서 걸러져
+// 편집기에서 저장해도 덮어쓰지 않습니다. 문항의 편집용 표시(draft)도 제외합니다.
+const SURVEY_FIELDS = ['title', 'description', 'deadline', 'closeAfterDeadline', 'openEnabled', 'status', 'questions'];
 function surveyPayload(s) {
-  const m = JSON.parse(JSON.stringify(s));
-  delete m.id;
-  m.questions = (m.questions || []).map(q => { delete q.draft; if (q.options) q.options = q.options.map(o => String(o).trim()).filter(Boolean); return q; });
+  const src = JSON.parse(JSON.stringify(s || {})), m = {};
+  for (const k of SURVEY_FIELDS) if (src[k] !== undefined) m[k] = src[k];
+  m.title = String(m.title ?? ''); m.description = String(m.description ?? ''); m.deadline = String(m.deadline ?? '');
+  m.closeAfterDeadline = !!m.closeAfterDeadline; m.openEnabled = m.openEnabled !== false;
+  m.questions = (m.questions || []).map(q => { delete q.draft; q.title = String(q.title ?? ''); if (q.options) q.options = q.options.map(o => String(o).trim()).filter(Boolean); return q; });
   return m;
 }
 
@@ -83,11 +88,11 @@ const SurveyStore = {
     if (!snap.exists) return null;
     return { id: snap.id, ...normalizeSurvey(snap.data()) };
   },
-  // 진행 중 설문 중 응답을 받을 수 있는 것 (index.html · survey.html에서 설문ID가 없을 때 사용)
+  // 공개 링크로 응답을 받을 수 있는 진행 중 설문 (survey.html에서 설문ID 없이 열었을 때 사용)
   async listOpen() {
     const all = await this.list(false);
     const now = new Date();
-    return all.filter(s => !s.forceClosed && !(s.closeAfterDeadline && s.deadline && now > new Date(s.deadline + 'T23:59:59')));
+    return all.filter(s => s.openEnabled !== false && !s.forceClosed && !(s.closeAfterDeadline && s.deadline && now > new Date(s.deadline + 'T23:59:59')));
   },
   async create(def, id) {
     id = id || newSurveyId();
@@ -110,7 +115,7 @@ const SurveyStore = {
   // 문항만 복제한 새 설문 (대상자·응답은 복제하지 않음)
   async duplicate(id, newTitle) {
     const s = await this.get(id); if (!s) throw new Error('설문을 찾을 수 없습니다.');
-    ['createdAt', 'createdAtMs', 'updatedAt', 'ai', 'forceClosed', 'forceClosedAt', 'forceClosedReason', 'closeLog', 'isTest'].forEach(k => delete s[k]);   // AI 결과·마감 이력·TEST 표시는 복제하지 않음
+    // create()가 편집 필드만 저장하므로 AI 결과·마감 이력·예전 TEST 표시는 복제되지 않음
     s.title = newTitle || (s.title + ' (복사본)'); s.status = 'active';
     return this.create(s);
   },
@@ -127,7 +132,7 @@ const SurveyStore = {
   // 예전 구조(config/survey, recipients, responses 최상위 컬렉션)를 설문 한 건으로 옮깁니다.
   async migrateLegacy() {
     const cfg = await this.db.collection('config').doc('survey').get();
-    const def = cfg.exists && cfg.data().survey ? cfg.data().survey : JSON.parse(JSON.stringify(SURVEY));
+    const def = cfg.exists && cfg.data().survey ? cfg.data().survey : (typeof SURVEY !== 'undefined' ? JSON.parse(JSON.stringify(SURVEY)) : { title: '가져온 설문', questions: [] });
     const id = await this.create(normalizeSurvey(def));
     let moved = { recipients: 0, responses: 0 };
     for (const sub of ['recipients', 'responses']) {
@@ -160,7 +165,7 @@ const ContactStore = {
   },
   async list() {
     const snap = await this.col().get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data(), members: d.data().members || [] })).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    return snap.docs.map(d => ({ id: d.id, ...d.data(), members: d.data().members || [] })).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko'));
   },
   async get(id) { const s = await this.col().doc(id).get(); return s.exists ? { id: s.id, ...s.data(), members: s.data().members || [] } : null; },
   async create(name, members) {
@@ -174,13 +179,16 @@ const ContactStore = {
 };
 
 /* =========================================================
- * AI 호출 (Apps Script 발송 서버를 거쳐 Gemini 호출 — 키는 서버의 스크립트 속성에만 있음)
+ * 발송 서버(Apps Script) 호출 — 메일 발송과 AI(Gemini) 요청이 같은 서버를 씁니다. Gemini 키는 서버의 스크립트 속성에만 있음
+ *   AiClient.configured()              → MAIL_CONFIG(주소·키)가 채워졌는가
+ *   await AiClient.call({ action })    → 서버 응답 객체 (ok:false면 Error, HTML 화면이면 Error에 unparsable:true)
  *   await AiClient.status()            → { enabled, models }  (설정 안 됐으면 enabled:false)
- *   await AiClient.run('draft', {...}) → { model, result }   (실패하면 Error)
+ *   await AiClient.run('draft', {...}) → { model, result, attempts }   (실패하면 Error)
  * ========================================================= */
 const AiClient = {
   _status: null,
-  configured() { return typeof MAIL_CONFIG !== 'undefined' && MAIL_CONFIG.appsScriptUrl && !MAIL_CONFIG.appsScriptUrl.includes('여기에') && MAIL_CONFIG.apiKey && !MAIL_CONFIG.apiKey.startsWith('여기에'); },
+  lastAttempts: null,   // 마지막 호출에서 서버가 돌려준 모델별 시도 내역(실패 응답에도 실려 옴)
+  configured() { return typeof MAIL_CONFIG !== 'undefined' && !!MAIL_CONFIG.appsScriptUrl && !MAIL_CONFIG.appsScriptUrl.includes('여기에') && !!MAIL_CONFIG.apiKey && !MAIL_CONFIG.apiKey.startsWith('여기에'); },
   // JSON이 아닌 응답(구글 HTML 화면)을 사람이 읽을 수 있게 요약: 제목과 본문 앞부분
   describeHtml(text, status) {
     const title = (text.match(/<title[^>]*>([^<]*)<\/title>/i) || [])[1] || '';
@@ -201,19 +209,21 @@ const AiClient = {
     try { data = JSON.parse(text); }
     catch {
       const d = this.describeHtml(text, res.status);
-      // 구글의 일시 오류 화면이면 3초 뒤 한 번 자동 재시도
-      if (!d.login && !_retry) { await new Promise(r => setTimeout(r, 3000)); return this.call(payload, true); }
-      throw new Error('서버가 JSON 대신 HTML 화면을 돌려줬습니다. ' + d.text);
+      // 구글의 일시 오류 화면이면 3초 뒤 한 번 자동 재시도 (메일 발송은 서버가 이미 실행했을 수 있으므로 재시도하지 않음)
+      if (!d.login && !_retry && payload.action !== 'send') { await new Promise(r => setTimeout(r, 3000)); return this.call(payload, true); }
+      const e = new Error('서버가 JSON 대신 HTML 화면을 돌려줬습니다. ' + d.text);
+      e.unparsable = true; e.htmlInfo = d.text; throw e;
     }
-    if (!data.ok) { this.lastAttempts = data.attempts || null; throw new Error(data.error || '서버 오류'); }
+    if (!data || typeof data !== 'object') throw new Error('서버 응답 형식이 올바르지 않습니다: ' + text.slice(0, 80));
     this.lastAttempts = data.attempts || null;
+    if (!data.ok) throw new Error(data.error || '서버 오류');
     return data;
   },
+  // 성공한 결과만 기억합니다. 일시 오류로 실패한 결과를 기억하면 새로 고침 전까지 AI를 못 쓰게 되기 때문입니다
   async status() {
     if (this._status) return this._status;
-    try { const d = await this.call({ action: 'ai_status' }); this._status = { enabled: !!d.enabled, models: d.models || {} }; }
-    catch (err) { this._status = { enabled: false, error: err.message }; }
-    return this._status;
+    try { const d = await this.call({ action: 'ai_status' }); this._status = { enabled: !!d.enabled, models: d.models || {} }; return this._status; }
+    catch (err) { return { enabled: false, error: err.message }; }
   },
   // 오류 메시지를 한 줄 원인으로 줄임 (화면 안내용)
   shortReason(msg) {
@@ -234,7 +244,5 @@ const AiClient = {
     // 서버가 ok:true인데 result가 없는 경우(배포 버전 불일치 등)를 그대로 넘기면 화면 코드가 이해하기 어려운 오류를 냅니다
     if (d.result === undefined || d.result === null) throw new Error(`서버가 결과 없이 응답했습니다(작업 ${task}). 서버 응답: ${JSON.stringify(d).slice(0, 200)} — Apps Script를 최신 Code.gs로 "새 버전" 배포했는지 확인하세요.`);
     return { model: d.model, result: d.result, attempts: d.attempts || [] };
-  },
-  // 실패 응답에도 attempts가 실려 오면 오류 메시지에 붙여 줍니다
-  lastAttempts: null
+  }
 };

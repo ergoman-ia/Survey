@@ -58,11 +58,12 @@
 <script src="survey-store.js"></script>
 <script>
 (function () {
+  const app = document.getElementById('app');
+  if (!firebaseConfigured()) { app.innerHTML = '<div class="card msg"><h2>설정이 끝나지 않았습니다</h2><p>firebase-config.js의 Firebase 설정값이 비어 있습니다. 담당자에게 문의해 주세요.</p></div>'; return; }
   firebase.initializeApp(FIREBASE_CONFIG);
   const db = firebase.firestore();
   const FieldValue = firebase.firestore.FieldValue;
 
-  const app = document.getElementById('app');
   const params = new URLSearchParams(location.search);
   const token = params.get('t');
   let surveyId = params.get('s');
@@ -89,15 +90,15 @@
   function renderQuestion(q, idx) {
     let body = '';
     const req = q.required ? '<span class="req">*</span>' : '';
-    const hasOther = q.allowOther || (q.options || []).includes('기타');
+    const hasOther = !!q.allowOther;   // normalizeSurvey가 '기타' 선택지를 allowOther로 바꿔 둠
     if (q.type === 'single' || q.type === 'multi') {
       const t = q.type === 'single' ? 'radio' : 'checkbox';
-      const opts = q.allowOther && !q.options.includes('기타') ? q.options.concat(['기타']) : q.options;
+      const opts = q.allowOther ? (q.options || []).concat(['기타']) : (q.options || []);
       body = opts.map(o =>
         `<label class="opt"><input type="${t}" name="${q.id}" value="${esc(o)}"><span>${esc(o)}</span></label>`).join('');
       if (hasOther) body += `<input type="text" class="other-input" name="${q.id}__other" placeholder="기타 내용을 입력해 주세요.">`;
     } else if (q.type === 'dropdown') {
-      body = `<select name="${q.id}"><option value="">선택하세요</option>${q.options.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select>`;
+      body = `<select name="${q.id}"><option value="">선택하세요</option>${(q.options || []).map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}</select>`;
     } else if (q.type === 'scale') {
       const min = q.min ?? 1, max = q.max ?? 5;
       let items = '';
@@ -170,25 +171,26 @@
     const answers = {};
     let valid = true;
     for (const q of SURVEY.questions) {
-      const card = document.querySelector(`.q[data-id="${q.id}"]`);
+      const id = CSS.escape(String(q.id));
+      const card = document.querySelector(`.q[data-id="${id}"]`);
       card.classList.remove('invalid');
       let val;
-      const otherEl = document.querySelector(`input[name="${q.id}__other"]`);
+      const otherEl = document.querySelector(`input[name="${id}__other"]`);
       const otherText = otherEl && otherEl.value.trim();
       if (q.type === 'single' || q.type === 'scale' || q.type === 'rating') {
-        const el = document.querySelector(`input[name="${q.id}"]:checked`);
+        const el = document.querySelector(`input[name="${id}"]:checked`);
         val = el ? ((q.type === 'scale' || q.type === 'rating') ? Number(el.value) : el.value) : null;
         if (val === '기타' && otherText) val = '기타: ' + otherText;
       } else if (q.type === 'multi') {
-        val = [...document.querySelectorAll(`input[name="${q.id}"]:checked`)].map(e => e.value);
+        val = [...document.querySelectorAll(`input[name="${id}"]:checked`)].map(e => e.value);
         if (val.includes('기타') && otherText) val = val.map(v => v === '기타' ? '기타: ' + otherText : v);
         if (!val.length) val = null;
       } else if (q.type === 'dropdown') {
-        val = document.querySelector(`select[name="${q.id}"]`).value || null;
+        val = document.querySelector(`select[name="${id}"]`).value || null;
       } else if (q.type === 'short') {
-        val = document.querySelector(`input[name="${q.id}"]`).value.trim() || null;
+        val = document.querySelector(`input[name="${id}"]`).value.trim() || null;
       } else {
-        val = document.querySelector(`textarea[name="${q.id}"]`).value.trim() || null;
+        val = document.querySelector(`textarea[name="${id}"]`).value.trim() || null;
       }
       if (q.required && val === null) { valid = false; card.classList.add('invalid'); }
       answers[q.id] = val;
@@ -236,11 +238,10 @@
         submittedAt: FieldValue.serverTimestamp()
       };
       const ref = await store.responses(surveyId).add(doc);
+      // 응답은 이미 저장됐으므로, 제출 표시 기록이 실패해도 완료 화면을 보여 줍니다(다시 제출하면 응답이 두 번 저장되기 때문)
       if (token) {
-        await store.recipients(surveyId).doc(token).update({
-          submittedAt: FieldValue.serverTimestamp(),
-          responseId: ref.id
-        });
+        await store.recipients(surveyId).doc(token).update({ submittedAt: FieldValue.serverTimestamp(), responseId: ref.id })
+          .catch(err => console.warn('제출 표시 기록 실패(응답은 저장됨)', err));
       } else {
         try { localStorage.setItem(OPEN_DONE_KEY, ref.id); } catch (_) {}
       }

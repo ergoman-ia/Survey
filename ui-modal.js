@@ -2,7 +2,7 @@
  * 공통 모달 창 — 브라우저 기본 alert/confirm/prompt 대신 사용
  * ---------------------------------------------------------
  *   await Modal.alert('메시지', '제목(선택)')             → 확인 버튼 하나
- *   await Modal.confirm('메시지', '제목(선택)')           → true / false
+ *   await Modal.confirm('메시지', '제목(선택)', { okText, cancelText, danger })  → true / false (셋째 인자는 선택: 버튼 글자, 빨간 확인 버튼)
  *   await Modal.prompt('메시지', '기본값', '제목(선택)')  → 입력값 / null(취소)
  *   Modal.toast('짧은 안내')                              → 오른쪽 아래에 3초간 표시(대기 없음)
  * 모두 Promise를 돌려주므로 호출하는 함수는 async여야 합니다.
@@ -27,7 +27,7 @@ const Modal = (() => {
   }
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  // 자동 응답 모드(테스트용): window.__MODAL_AUTO = { confirm: true, prompt: '값' } 이면 창을 띄우지 않고 바로 답합니다.
+  // 자동 응답 모드(자동 시험용 갈고리, 화면 코드에서는 쓰지 않음): window.__MODAL_AUTO = { confirm: true, prompt: '값' } 이면 창을 띄우지 않고 바로 답합니다.
   function auto(kind, msg, def) {
     const a = window.__MODAL_AUTO; if (!a) return undefined;
     if (a.log) a.log(kind, msg);
@@ -53,19 +53,24 @@ const Modal = (() => {
         </div></div>`;
       const input = bg.querySelector('input');
       const done = r => {
-        document.removeEventListener('keydown', onKey);
         bg.remove();
         if (prev && prev.focus) try { prev.focus(); } catch (_) {}
         if (kind === 'alert') resolve(true);
         else if (kind === 'confirm') resolve(r === 'ok');
         else resolve(r === 'ok' ? input.value : null);
       };
+      // 키 처리는 이 창 안에서만(창이 겹쳐도 서로 영향 없음). Tab은 창 안의 입력·버튼 사이에서만 돌게 함
       const onKey = e => {
         if (e.key === 'Escape') { e.preventDefault(); done('cancel'); }
         else if (e.key === 'Enter' && (kind !== 'prompt' || e.target === input)) { e.preventDefault(); done('ok'); }
+        else if (e.key === 'Tab') {
+          const f = [...bg.querySelectorAll('input, button')]; if (!f.length) return;
+          const i = f.indexOf(document.activeElement), n = e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i >= f.length - 1 ? 0 : i + 1);
+          e.preventDefault(); f[n].focus();
+        }
       };
+      bg.addEventListener('keydown', onKey);
       bg.addEventListener('click', e => { const b = e.target.closest('button[data-r]'); if (b) done(b.dataset.r); });
-      document.addEventListener('keydown', onKey);
       document.body.appendChild(bg);
       (input || bg.querySelector('button[data-r="ok"]')).focus();
       if (input) input.select();
@@ -76,7 +81,7 @@ const Modal = (() => {
   function toast(msg) {
     ensureStyle();
     let t = document.getElementById('ui-toast');
-    if (!t) { t = document.createElement('div'); t.id = 'ui-toast'; t.className = 'ui-toast'; document.body.appendChild(t); }
+    if (!t) { t = document.createElement('div'); t.id = 'ui-toast'; t.className = 'ui-toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
     t.textContent = msg; t.classList.add('on');
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), 3000);
   }
