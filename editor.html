@@ -49,8 +49,13 @@
   .status { font-size: 12px; color: var(--muted); }
   .ai-log { margin: 8px 0 0; padding: 6px 10px; background: #1e1e1e; color: #ddd; border-radius: 8px; font: 12px/1.5 Consolas, monospace; white-space: pre-wrap; word-break: break-all; height: calc(3em + 12px); overflow-y: auto; }
   .status.ok { color: var(--ok); } .status.bad { color: var(--bad); }
-  .login { max-width: 380px; margin: 80px auto; }
+  /* 로그인: 화면을 어둡게 덮는 모달 창 (관리자 모드와 같은 모양) */
+  #loginView { position: fixed; inset: 0; background: rgba(20, 30, 50, .45); display: flex; align-items: center; justify-content: center; z-index: 9000; padding: 16px; }
+  .login { width: min(400px, 100%); margin: 0; box-shadow: 0 20px 60px rgba(0, 0, 0, .25); padding: 22px; animation: login-in .15s ease-out; }
+  @keyframes login-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .login h1 { font-size: 17px; }
   .login input { width: 100%; margin-bottom: 10px; }
+  .login .row { justify-content: flex-end; }
   /* 화면 이동 링크 묶음(설문 안내 페이지·설문 편집 페이지·관리자 모드): 세 화면 공통, 옅은 보라색 바탕 */
   /* 다른 화면으로 가는 링크 묶음 — 옅은 보라 바탕 */
   .pagenav { display: inline-flex; gap: 4px; align-items: center; background: #efeafb; border: 1px solid #d5c9f2; border-radius: 10px; padding: 4px; flex-wrap: nowrap; white-space: nowrap; }
@@ -63,13 +68,15 @@
 </head>
 <body>
 
-<div class="wrap" id="loginView">
-  <div class="card login">
-    <h1 style="margin-bottom:12px">설문 편집 로그인</h1>
+<div id="loginView">
+  <div class="card login" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+    <h1 id="loginTitle" style="margin-bottom:12px">관리자 로그인</h1>
     <input type="password" id="pw" placeholder="관리자 비밀번호" autofocus>
-    <button class="btn" style="width:100%" id="loginBtn">로그인</button>
-    <p class="muted" id="loginMsg"></p>
-    <p class="muted"><a href="index.html">설문 안내로 돌아가기</a></p>
+    <div class="row">
+      <a class="btn sec" href="index.html">취소</a>
+      <button class="btn" id="loginBtn">로그인</button>
+    </div>
+    <p class="muted" id="loginMsg" style="margin:8px 0 0"></p>
   </div>
 </div>
 
