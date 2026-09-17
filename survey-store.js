@@ -216,6 +216,7 @@ const AiClient = {
   // 오류 메시지를 한 줄 원인으로 줄임 (화면 안내용)
   shortReason(msg) {
     const m = String(msg || '');
+    if (/403|Permission denied|PERMISSION_DENIED|suspended|API_KEY_INVALID|API key not valid|400.*key/i.test(m)) return 'Gemini API 키 권한 문제 — 키가 유효한지, 키의 API 제한과 프로젝트의 Generative Language API 사용 설정을 확인하세요.';
     if (/429|quota|한도|RESOURCE_EXHAUSTED|rate/i.test(m)) return '사용 한도 초과 — 잠시 후 다시 시도하세요.';
     if (/503|overload|busy|일시적|temporar|unavailable|502|504|500/i.test(m)) return '서버가 바쁩니다 — 잠시 후 다시 시도하세요.';
     if (/Failed to fetch|NetworkError|Load failed|시간 초과|timeout/i.test(m)) return '네트워크 연결이 끊겼습니다 — 다시 시도하세요.';
