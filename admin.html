@@ -148,9 +148,9 @@
         <div class="row" style="margin-top:8px"><button class="btn" id="addBulk">일괄 추가</button><span class="muted">엑셀에서 열을 복사해 붙여 넣어도 됩니다(탭 구분 지원).</span></div>
       </details>
       <details style="margin-top:8px">
-        <summary class="muted" style="cursor:pointer">CSV 파일로 주소록 불러오기 (엑셀에서 "CSV(쉼표로 분리)"로 저장한 파일)</summary>
+        <summary class="muted" style="cursor:pointer">엑셀(xlsx)·CSV 파일로 대상자 불러오기</summary>
         <div class="row" style="margin-top:8px">
-          <input type="file" id="csvFile" accept=".csv,.txt,.tsv">
+          <input type="file" id="csvFile" accept=".xlsx,.xls,.csv,.txt,.tsv">
           <span class="muted">첫 줄이 제목 줄(이름, 이메일, 소속 등)이면 자동으로 인식합니다. 한글 인코딩(UTF-8, EUC-KR)은 자동 판별합니다.</span>
         </div>
         <div id="csvArea" style="display:none">
@@ -233,7 +233,7 @@
     <div id="statsArea"></div>
     <div id="reportArea"></div>
     <div class="card">
-      <div class="row" style="justify-content:space-between"><h3 style="margin:0">응답 목록</h3><button class="btn sec sm" id="exportResp">응답 원본 CSV 내려받기</button></div>
+      <div class="row" style="justify-content:space-between"><h3 style="margin:0">응답 목록</h3><button class="btn sec sm" id="exportResp">응답 원본 엑셀(xlsx) 내려받기</button></div>
       <div class="tbl"><table><thead><tr><th>제출 시각</th><th>경로</th><th>이름</th><th>이메일</th><th>소속</th><th>작업</th></tr></thead><tbody id="respBody"></tbody></table></div>
     </div>
   </div>
@@ -251,7 +251,7 @@
         </div>
         <div class="row" style="margin:0">
           <button class="btn" id="abToSurvey">이 주소록을 현재 설문 대상자로 추가</button>
-          <button class="btn sec" id="abExport">CSV 내려받기</button>
+          <button class="btn sec" id="abExport">엑셀(xlsx) 내려받기</button>
         </div>
       </div>
       <p class="muted">교수 명단, 안전보건 전문기관, 교육 전문기관처럼 자주 쓰는 이메일 목록을 이름을 붙여 보관해 두고, 어느 설문에서든 대상자로 가져올 수 있습니다. 주소록은 설문과 별개로 저장되며 설문을 삭제해도 남습니다.</p>
@@ -270,8 +270,8 @@
         <div class="row" style="margin-top:8px"><button class="btn" id="abAddBulk">일괄 추가</button></div>
       </details>
       <details style="margin-top:8px">
-        <summary class="muted" style="cursor:pointer">CSV 파일에서 추가</summary>
-        <div class="row" style="margin-top:8px"><input type="file" id="abCsvFile" accept=".csv,.txt,.tsv"><span class="muted">첫 줄이 제목 줄이면 자동 인식, 한글 인코딩 자동 판별</span></div>
+        <summary class="muted" style="cursor:pointer">엑셀(xlsx)·CSV 파일에서 추가</summary>
+        <div class="row" style="margin-top:8px"><input type="file" id="abCsvFile" accept=".xlsx,.xls,.csv,.txt,.tsv"><span class="muted">첫 줄이 제목 줄이면 자동 인식, 한글 인코딩 자동 판별</span></div>
         <div id="abCsvArea" style="display:none">
           <div class="row">
             <label>이름 열 <select id="abMapName"></select></label>
@@ -343,6 +343,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // CDN이 막힌 환경이면 저장소 안 사본(vendor/)을 대신 읽습니다(선택 사항: vendor 폴더가 없으면 표만 표시).
 if (!window.Chart) document.write('<script src="vendor/chart.umd.js"><\/script>');
@@ -365,11 +366,30 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
     return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
   }
-  function downloadCSV(name, rows) {
+  // 엑셀(xlsx) 파일로 내려받기. 엑셀 라이브러리(SheetJS)를 못 불러온 경우에만 CSV로 대신 저장
+  function downloadXLSX(name, rows, sheetName) {
+    if (window.XLSX) {
+      const ws = XLSX.utils.aoa_to_sheet(rows.map(r => r.map(v => v ?? '')));
+      ws['!cols'] = rows[0].map((_, i) => ({ wch: Math.min(60, Math.max(8, ...rows.slice(0, 200).map(r => String(r[i] ?? '').length * 1.6))) }));
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, (sheetName || 'Sheet1').replace(/[\\/?*\[\]:]/g, ' ').slice(0, 31));
+      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = name.replace(/\.csv$/i, '') + '.xlsx'; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      return;
+    }
     const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name.replace(/\.xlsx$/i, '') + '.csv'; a.click();
     URL.revokeObjectURL(a.href);
+  }
+  // 엑셀 파일(xlsx/xls)이면 첫 시트를 행 배열로, 아니면 CSV로 읽음
+  async function readTableFile(f) {
+    if (/\.xlsx?$/i.test(f.name) && window.XLSX) {
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }).map(r => r.map(v => String(v ?? '').trim())).filter(r => r.some(Boolean));
+    }
+    return parseCSV(decodeBuffer(await f.arrayBuffer()));
   }
   function log(msg) {
     const el = $('log'); el.style.display = 'block';
@@ -756,7 +776,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const reset = () => { $(ids.area).style.display = 'none'; $(ids.file).value = ''; rows = []; };
     $(ids.file).onchange = async e => {
       const f = e.target.files[0]; if (!f) return;
-      rows = parseCSV(decodeBuffer(await f.arrayBuffer()));
+      rows = await readTableFile(f);
       if (!rows.length) { await Modal.alert('파일에서 읽을 내용이 없습니다.'); return; }
       const g = guessColumns(rows), cols = Math.max(...rows.map(r => r.length));
       const opts = sel => Array.from({ length: cols }, (_, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${i + 1}열${g.isHeader && rows[0][i] ? ' (' + esc(rows[0][i]) + ')' : ''}</option>`).join('');
@@ -1309,7 +1329,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const rows = [head];
     filteredResponses().forEach(r => rows.push([fmt(r.submittedAt), channelLabel(r), r.name || '', r.email || '', r.group || '',
       ...CUR.questions.map(q => { const a = r.answers?.[q.id]; return Array.isArray(a) ? a.join('; ') : (a ?? ''); })]));
-    downloadCSV(`설문응답_${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    downloadXLSX(`설문응답_${(CUR.title || '').replace(/[\\/:*?"<>|]/g, '_').slice(0, 40)}_${new Date().toISOString().slice(0, 10)}`, rows, '응답');
   };
   $('printBtn').onclick = () => window.print();
 
@@ -1471,7 +1491,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   };
   $('abExport').onclick = () => {
     if (!AB) return;
-    downloadCSV(`주소록_${AB.name}.csv`, [['이름', '이메일', '소속'], ...AB.members.map(m => [m.name, m.email, m.group || ''])]);
+    downloadXLSX(`주소록_${AB.name.replace(/[\\/:*?"<>|]/g, '_')}`, [['이름', '이메일', '소속'], ...AB.members.map(m => [m.name, m.email, m.group || ''])], '주소록');
   };
   // 주소록 → 현재 설문 대상자
   async function importList(id, sendAfter) {
