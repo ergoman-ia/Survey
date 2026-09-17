@@ -8,11 +8,15 @@
   :root { --c: #1f5fbf; --bg: #f4f6fa; --line: #dde3ec; --text: #222; --muted: #667; --ok: #1a9c4b; --warn: #d98a00; --bad: #d33; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; font-size: 14px; line-height: 1.5; }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 16px 60px; }
   header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
   /* 설문 선택 줄: 선택 상자와 강제 마감·보관·삭제 버튼이 한 줄에 붙어 있도록(줄 바꿈 금지) */
   .sel-row { flex-wrap: nowrap; }
+  .sel-row { gap: 6px; }
   .sel-row select { width: 473px; max-width: 473px; flex: 0 1 473px; min-width: 200px; }
+  .sel-row .btn.sm { padding: 4px 7px; }
+  header { gap: 8px; }
+  #conn:empty { display: none; }   /* 연결 문제가 있을 때만 글자가 들어가 보임 */
   h1 { font-size: 20px; margin: 0; color: var(--c); }
   .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -71,6 +75,12 @@
   .ai-over::before { content: "진행 중…"; color: #fff; background: var(--ok); font-weight: 700; font-size: 11px; line-height: 16px; border-radius: 999px; padding: 0 9px; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
   .ai-wrap.open .ai-over { display: flex; }
   .ai-wrap.open .btn { opacity: .45; }
+  /* 화면 이동 링크 묶음(설문 안내 페이지·설문 편집 페이지·관리자 모드): 세 화면 공통, 옅은 보라색 바탕 */
+  /* 페이지 이동 묶음(모든 화면 공통): 설문 안내 페이지 · 설문 편집 페이지 · 관리자 모드 · 로그아웃 — 옅은 보라 바탕, 현재 화면은 진하게 */
+  .pagenav { display: inline-flex; gap: 4px; align-items: center; background: #efeafb; border: 1px solid #d5c9f2; border-radius: 10px; padding: 4px; flex-wrap: nowrap; white-space: nowrap; }
+  .pagenav a, .pagenav button { color: #5b3fb0; font: inherit; font-size: 13px; text-decoration: none; border: 1px solid #b9a6e6; background: #fff; padding: 5px 8px; border-radius: 7px; white-space: nowrap; cursor: pointer; line-height: 1.4; }
+  .pagenav a:hover, .pagenav button:hover { background: #e4dbf7; }
+  .pagenav .cur { background: #5b3fb0; color: #fff; border-color: #5b3fb0; pointer-events: none; }
   .hint { background: #fff8e6; border: 1px solid #f3dca0; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
 </style>
 </head>
@@ -90,17 +100,15 @@
 <div class="wrap" id="adminView" style="display:none">
   <header>
     <div class="row sel-row" style="margin:0">
-      <h1 style="white-space:nowrap">설문 관리</h1>
+      <h1 style="white-space:nowrap;font-size:18px">설문 관리</h1>
       <select id="surveySel" title="관리할 설문 선택"></select>
       <button class="btn sm danger" id="svClose" title="응답 접수를 지금 끝내거나 다시 엽니다" style="white-space:nowrap">강제 마감</button>
       <button class="btn sm sec" id="svArchive" style="white-space:nowrap">보관</button>
       <button class="btn sm danger" id="svDelete" style="white-space:nowrap">삭제</button>
     </div>
-    <div class="row" style="margin:0">
-      <span class="muted" id="conn" title="Firestore 실시간 연결 상태 — 문제가 있을 때만 표시됩니다">연결 중…</span>
-      <a class="btn sec" href="index.html" style="text-decoration:none">설문 안내 페이지</a>
-      <a class="btn sec" id="toEditor" href="editor.html" style="text-decoration:none" title="설문을 새로 만들고 편집·복제하는 곳">설문 편집 페이지</a>
-      <button class="btn sec" id="logoutBtn">로그아웃</button>
+    <div class="row" style="margin:0;flex-wrap:nowrap">
+      <span class="muted" id="conn" title="Firestore 실시간 연결 상태 — 문제가 있을 때만 표시됩니다"></span>
+      <div class="pagenav"><a href="index.html">설문 안내 페이지</a><a href="editor.html" id="toEditor">설문 편집 페이지</a><a href="admin.html" class="cur">관리자 모드</a><button type="button" id="logoutBtn" title="관리자 세션을 끝냅니다">로그아웃</button></div>
     </div>
   </header>
 

@@ -19,8 +19,12 @@
   .hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
   .hero h1 { font-size: 30px; margin: 0; color: var(--c); letter-spacing: -0.5px; }
   .hero p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
-  .links a { color: var(--c); font-size: 14px; text-decoration: none; border: 1px solid var(--c); background: #fff; padding: 8px 14px; border-radius: 8px; margin-left: 6px; }
-  .links a:hover { background: var(--c); color: #fff; }
+  /* 화면 이동 링크 묶음(설문 안내 페이지·설문 편집 페이지·관리자 모드): 세 화면 공통, 옅은 보라색 바탕 */
+  /* 페이지 이동 묶음(모든 화면 공통): 설문 안내 페이지 · 설문 편집 페이지 · 관리자 모드 · 로그아웃 — 옅은 보라 바탕, 현재 화면은 진하게 */
+  .pagenav { display: inline-flex; gap: 4px; align-items: center; background: #efeafb; border: 1px solid #d5c9f2; border-radius: 10px; padding: 4px; flex-wrap: nowrap; white-space: nowrap; }
+  .pagenav a, .pagenav button { color: #5b3fb0; font: inherit; font-size: 13px; text-decoration: none; border: 1px solid #b9a6e6; background: #fff; padding: 5px 8px; border-radius: 7px; white-space: nowrap; cursor: pointer; line-height: 1.4; }
+  .pagenav a:hover, .pagenav button:hover { background: #e4dbf7; }
+  .pagenav .cur { background: #5b3fb0; color: #fff; border-color: #5b3fb0; pointer-events: none; }
   .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 12px; }
   .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
   .toolbar input, .toolbar select { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; background: #fff; }
@@ -64,7 +68,7 @@
       <h1>설문 제작 및 발송 관리 시스템</h1>
       <p>설문을 만들고, 대상자에게 메일로 보내고, 응답과 통계를 한곳에서 관리합니다.</p>
     </div>
-    <div class="links"><a href="editor.html">설문 편집 페이지</a><a href="admin.html">관리자 모드</a></div>
+    <div class="pagenav"><a href="index.html" class="cur">설문 안내 페이지</a><a href="editor.html">설문 편집 페이지</a><a href="admin.html">관리자 모드</a><button type="button" id="logoutBtn" style="display:none" title="관리자 세션을 끝냅니다">로그아웃</button></div>
   </div>
   <div id="app"><div class="card"><p class="meta">설문을 불러오는 중입니다…</p></div></div>
 </div>
@@ -78,6 +82,8 @@
   if (new URLSearchParams(location.search).get('t')) { location.replace('survey.html' + location.search); return; }
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const app = document.getElementById('app');
+  // 관리자로 로그인한 상태(같은 탭에서 관리·편집 화면을 다녀온 경우)면 로그아웃 버튼을 보여 줌
+  try { if (sessionStorage.getItem('surveyAdmin')) { const lb = document.getElementById('logoutBtn'); lb.style.display = ''; lb.onclick = () => { sessionStorage.removeItem('surveyAdmin'); lb.style.display = 'none'; }; } } catch (_) {}
   const typeName = { single: '객관식', multi: '체크박스', dropdown: '드롭다운', scale: '선형 배율', rating: '별점', short: '단답형', long: '장문형' };
   const PAGE = 20;
 
