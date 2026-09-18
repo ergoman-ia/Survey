@@ -421,6 +421,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   let unsubs = [];                        // 실시간 구독 해제 함수
   let selectSeq = 0;                      // selectSurvey 호출 순번 (빠르게 연달아 바꿀 때 늦게 도착한 이전 설문이 화면을 덮지 않게)
   let AI_BUSY = null;                     // AI 작업이 진행 중인 설문 ID (한 번에 한 작업만)
+  let RESP_LOADED = false;                // 응답 목록을 한 번이라도 받았는가(받기 전 빈 목록을 "응답 0건"으로 보고 AI 결과를 지우지 않도록)
   let REC_LOADED = false;                 // 대상자 목록을 한 번이라도 받았는가(받기 전 빈 목록으로 보고서를 지우지 않도록)
   let staleChecked = '';                  // 마지막으로 AI 결과 최신 여부를 확인한 응답 지문
 
@@ -456,7 +457,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     $('toEditor').href = 'editor.html?s=' + encodeURIComponent(SID);
     renderCloseBtn();
     unsubs.forEach(u => u()); unsubs = [];
-    recipients = []; responses = []; REC_LOADED = false;
+    recipients = []; responses = []; REC_LOADED = false; RESP_LOADED = false;
     staleChecked = '';
     if (AI_BUSY !== id) aiPanelReset();   // 다른 설문의 AI 진행 상태·안내는 지움 (이 설문의 작업이 돌고 있으면 로그를 그대로 둠)
     if (AI_BUSY && AI_BUSY === id) { $('aiSummarize').disabled = true; $('aiReport').disabled = true; $('aiClear').disabled = true; }   // 이 설문에서 AI 작업이 도는 중이면 버튼 잠금 유지
@@ -470,6 +471,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     }, err => { $('conn').textContent = 'DB 연결 오류: ' + err.message; $('conn').style.color = 'var(--bad)'; console.error(err); }));
     unsubs.push(store.responses(SID).onSnapshot(snap => {
       responses = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => ms(b.submittedAt) - ms(a.submittedAt));
+      RESP_LOADED = true;
       renderStats(); renderGroupFilter(); renderResponses(); renderCharts(); renderAiButtons(); checkAiStale();
     }, err => { console.error(err); $('respCount').textContent = '응답을 읽지 못했습니다: ' + err.message; $('aiInfo').textContent = '응답 읽기 오류: ' + err.message + ' (Firestore 규칙의 responses read 허용을 확인하세요)'; }));
     renderSetup();
@@ -1033,6 +1035,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   // 응답이 바뀌었으면(추가·삭제) 예전 AI 결과를 지우고 버튼을 다시 열어 줍니다
   async function checkAiStale() {
     if (!SID || !CUR.ai || AI_BUSY === SID) return;   // 이 설문의 AI 작업이 도는 중에는 건드리지 않음 (끝날 때 지문과 함께 저장됨)
+    if (!RESP_LOADED) return;   // 응답을 아직 받지 못했으면 판단하지 않음(대상자 목록이 먼저 도착해도 AI 결과를 지우지 않음)
     const sig = respSig(), key = SID + ':' + JSON.stringify(sig) + ':' + JSON.stringify(recSig()); if (staleChecked === key) return; staleChecked = key;
     const hasSum = CUR.ai.summary && Object.keys(CUR.ai.summary).length, hasRep = !!CUR.ai.report;
     const partialOk = Array.isArray(CUR.ai.summaryFailed) && CUR.ai.summaryFailed.length && sigEq(CUR.ai.summaryPartialBasis, sig);   // 일부 실패 상태(응답 그대로)는 지우지 않음
@@ -1051,13 +1054,14 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   }
   // "AI 결과 지우기"를 쓸 수 있는가: 마감·보관 상태 + AI 작업 없음 + 완료되어 잠긴 AI 버튼이 하나 이상
   function clearAllowed() {
-    if (!SID || AI_BUSY) return false;
+    if (!SID || AI_BUSY || !RESP_LOADED) return false;
     if (stateOf(CUR) === 'open') return false;
     return aiFresh('summary') || aiFresh('report');
   }
   function renderAiButtons() {
     const sBtn = $('aiSummarize'), rBtn = $('aiReport'), gate = $('aiGate');
     if (AI_BUSY && AI_BUSY === SID) return;   // 이 설문에서 AI 작업이 진행 중일 때만 건드리지 않음
+    if (!RESP_LOADED) { sBtn.disabled = true; rBtn.disabled = true; $('aiClear').disabled = true; return; }   // 응답을 받기 전에는 판단할 수 없으므로 모두 잠가 둠
     const st = stateOf(CUR), allowed = st !== 'open';   // 진행 중이면 잠금(버튼 위에 "진행 중…" 표시), 완료된 결과가 있으면 "완료"로 잠금
     const sumOk = allowed && aiFresh('summary'), repOk = allowed && aiFresh('report');
     document.querySelectorAll('.ai-wrap').forEach(w => w.classList.toggle('open', !allowed));
