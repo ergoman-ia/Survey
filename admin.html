@@ -463,6 +463,21 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     if (AI_BUSY && AI_BUSY === id) { $('aiSummarize').disabled = true; $('aiReport').disabled = true; $('aiClear').disabled = true; }   // 이 설문에서 AI 작업이 도는 중이면 버튼 잠금 유지
     renderStats(); renderRecipients(); renderResponses(); renderCharts(); renderReport(); renderAiButtons();
     // orderBy를 쓰지 않습니다: Firestore는 정렬 필드가 없는 문서를 결과에서 빼 버려 예전 데이터가 사라져 보일 수 있음. 화면에서 정렬
+    // 설문 문서 실시간 구독: 다른 탭·PC에서 만든 AI 결과, 강제 마감·다시 시작·보관, 편집 화면의 마감일·문항 변경을 바로 반영.
+    //  (예전에는 화면을 열 때 한 번만 읽어, 다른 곳에서 바뀐 내용을 모른 채 버튼을 판단하고 저장했음)
+    unsubs.push(store.doc(SID).onSnapshot(snap => {
+      if (!snap.exists || snap.id !== SID) return;
+      const fresh = { id: snap.id, ...normalizeSurvey(snap.data()) };
+      const aiChanged = JSON.stringify(fresh.ai || null) !== JSON.stringify(CUR.ai || null);
+      const stChanged = stateOf(fresh) !== stateOf(CUR) || ['status', 'forceClosed', 'forceClosedReason', 'deadline', 'closeAfterDeadline', 'openEnabled'].some(k => JSON.stringify(fresh[k]) !== JSON.stringify(CUR[k]));
+      const qChanged = fresh.title !== CUR.title || JSON.stringify(fresh.questions) !== JSON.stringify(CUR.questions);
+      if (!aiChanged && !stChanged && !qChanged) { CUR = fresh; return; }
+      CUR = fresh;
+      if (stChanged) { renderState(); renderCloseBtn(); $('svArchive').textContent = CUR.status === 'archived' ? '복원' : '보관'; }
+      if (qChanged) document.title = CUR.title + ' — 관리';
+      if (aiChanged || qChanged) { renderCharts(); renderReport(); }
+      if (AI_BUSY !== SID) { renderAiButtons(); if (aiChanged || stChanged) { staleChecked = ''; checkAiStale(); } }
+    }, err => console.warn('설문 문서 구독 실패', err)));
     unsubs.push(store.recipients(SID).onSnapshot(snap => {
       recipients = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => ms(b.createdAt) - ms(a.createdAt));
       $('conn').textContent = ''; $('conn').style.color = '';   // 정상일 때는 표시하지 않음. 문제(연결 오류·규칙 거부)가 있을 때만 붉게 표시
@@ -1031,7 +1046,14 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     return true;
   }
   // 설문 문서의 ai 항목 전체를 바꿔 씁니다. set(merge)는 안에서 지운 키(summary 등)를 없애지 못하므로 update()로 통째로 덮어씀
-  const writeAi = (sid, ai) => store.doc(sid).update({ ai, updatedAt: FieldValue.serverTimestamp() });
+  // 바꿀 항목만 씁니다(값이 null이면 그 항목만 삭제). 예전처럼 ai 전체를 덮어쓰면, 다른 탭·PC에 남아 있던
+  //  예전 정보로 저장할 때 그 사이 새로 만든 요약·보고서가 지워질 수 있기 때문입니다.
+  const writeAiFields = (sid, patch) => {
+    const upd = { updatedAt: FieldValue.serverTimestamp() };
+    for (const [k, v] of Object.entries(patch)) upd['ai.' + k] = (v === null || v === undefined) ? FieldValue.delete() : v;
+    return store.doc(sid).update(upd);
+  };
+  const applyAi = (ai, patch) => { const out = Object.assign({}, ai || {}); for (const [k, v] of Object.entries(patch)) { if (v === null || v === undefined) delete out[k]; else out[k] = v; } return out; };
   // 응답이 바뀌었으면(추가·삭제) 예전 AI 결과를 지우고 버튼을 다시 열어 줍니다
   async function checkAiStale() {
     if (!SID || !CUR.ai || AI_BUSY === SID) return;   // 이 설문의 AI 작업이 도는 중에는 건드리지 않음 (끝날 때 지문과 함께 저장됨)
@@ -1042,8 +1064,11 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const dropSum = hasSum && !aiFresh('summary') && !partialOk, dropRep = hasRep && !aiFresh('report');
     const dropParts = !!CUR.ai.reportParts && (!sigEq(CUR.ai.reportPartsBasis, sig) || !recOk(CUR.ai.reportPartsRecip));   // 응답이 바뀌면 이어 쓰려고 저장해 둔 보고서 부분도 지움
     if (!dropSum && !dropRep && !dropParts) return;
-    const ai = { ...CUR.ai }; if (dropSum) { delete ai.summary; delete ai.summaryBasis; delete ai.summaryFailed; delete ai.summaryPartialBasis; } if (dropRep) { delete ai.report; delete ai.reportBasis; } if (dropRep) delete ai.reportRecipBasis; if (dropParts) { delete ai.reportParts; delete ai.reportPartsBasis; delete ai.reportPartsSum; delete ai.reportPartsRecip; }
-    try { await writeAi(SID, ai); CUR.ai = ai; }
+    const patch = {};
+    if (dropSum) ['summary', 'summaryBasis', 'summaryFailed', 'summaryPartialBasis'].forEach(k => patch[k] = null);
+    if (dropRep) ['report', 'reportBasis', 'reportRecipBasis'].forEach(k => patch[k] = null);
+    if (dropParts) ['reportParts', 'reportPartsBasis', 'reportPartsSum', 'reportPartsRecip'].forEach(k => patch[k] = null);
+    try { await writeAiFields(SID, patch); CUR.ai = applyAi(CUR.ai, patch); }
     catch (err) {   // 실패를 조용히 넘기지 않음: 화면에 알리고, 다음 변화 때 다시 시도하도록 확인 기록을 비움
       staleChecked = ''; console.warn('예전 AI 결과 삭제 실패', err);
       aiLog(`응답·대상자가 바뀌었지만 예전 AI 결과를 지우지 못했습니다: ${err.message} — "AI 결과 지우기"를 누르거나 새로 고침하세요`);
@@ -1077,9 +1102,8 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   setInterval(() => { if (SID && AI_BUSY !== SID) renderAiButtons(); }, 60000);   // 마감 시각이 지나면 1분 안에 자동 활성화
   // 특정 설문(sid)의 ai 필드에 저장 — 진행 중 다른 설문으로 바꿔도 원래 설문에 저장됨
   async function saveAiTo(sid, base, patch) {
-    const ai = Object.assign({}, base || {}, patch);
-    for (const k of Object.keys(ai)) if (ai[k] === null || ai[k] === undefined) delete ai[k];   // 비운 값(summaryBasis:null 등)은 키째 없앰
-    await writeAi(sid, ai);
+    await writeAiFields(sid, patch);   // 이번 작업이 바꾼 항목만 저장(비운 값 summaryBasis:null 등은 그 항목만 삭제)
+    const ai = applyAi(sid === SID ? CUR.ai : base, patch);
     if (sid === SID) CUR.ai = ai;
     return ai;
   }
@@ -1125,9 +1149,9 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     if (!clearAllowed()) { renderAiButtons(); return; }   // 화면이 늦게 갱신된 사이 눌린 경우 대비: 조건을 다시 확인
     if (!SID || !CUR.ai) return;
     if (!await Modal.confirm('저장된 AI 주관식 요약과 보고서를 지울까요?\n지운 뒤 버튼을 다시 눌러 지금 응답 기준으로 새로 만들 수 있습니다. (AI 요청 한도를 다시 씁니다)')) return;
-    const ai = { ...CUR.ai };
-    ['summary', 'summaryBasis', 'summaryFailed', 'summaryPartialBasis', 'report', 'reportBasis', 'reportRecipBasis', 'reportParts', 'reportPartsBasis', 'reportPartsSum', 'reportPartsRecip'].forEach(k => delete ai[k]);
-    try { await writeAi(SID, ai); CUR.ai = ai; } catch (err) { return Modal.alert('지우기 실패: ' + err.message); }
+    const patch = {};
+    ['summary', 'summaryBasis', 'summaryFailed', 'summaryPartialBasis', 'report', 'reportBasis', 'reportRecipBasis', 'reportParts', 'reportPartsBasis', 'reportPartsSum', 'reportPartsRecip'].forEach(k => patch[k] = null);
+    try { await writeAiFields(SID, patch); CUR.ai = applyAi(CUR.ai, patch); } catch (err) { return Modal.alert('지우기 실패: ' + err.message); }
     staleChecked = ''; aiLog('저장된 AI 요약·보고서를 지웠습니다');
     renderCharts(); renderReport(); renderAiButtons();
   };
