@@ -12,7 +12,7 @@
   - 오른쪽 위 "관리자 모드"(admin.html). 설문 편집 페이지(editor.html)는 관리자 모드 안에서 갑니다.
 -->
 <style>
-  :root { --c: #1f5fbf; --bg: #f4f6fa; --line: #dde3ec; --text: #222; --muted: #667; --ok: #1a9c4b; }
+  :root { --c: #1f5fbf; --bg: #dfe4ea; --line: #dde3ec; --card-line: #c9d1dc; --card-shadow: 0 1px 3px rgba(20, 30, 50, .08); --text: #222; --muted: #667; --ok: #1a9c4b; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; line-height: 1.6; }
   .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 60px; }
@@ -24,7 +24,7 @@
   .pagenav { display: inline-flex; gap: 4px; align-items: center; background: #efeafb; border: 1px solid #d5c9f2; border-radius: 10px; padding: 4px; flex-wrap: nowrap; white-space: nowrap; }
   .pagenav a, .pagenav button { color: #5b3fb0; font: inherit; font-size: 13px; text-decoration: none; border: 1px solid #b9a6e6; background: #fff; padding: 5px 8px; border-radius: 7px; white-space: nowrap; cursor: pointer; line-height: 1.4; }
   .pagenav a:hover, .pagenav button:hover { background: #e4dbf7; }
-  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 12px; }
+  .card { background: #fff; border: 1px solid var(--card-line); box-shadow: var(--card-shadow); border-radius: 12px; padding: 18px 20px; margin-bottom: 12px; }
   .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
   .toolbar input, .toolbar select { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; background: #fff; }
   .toolbar input { flex: 1; min-width: 200px; }

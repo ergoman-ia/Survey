@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>설문 편집</title>
 <style>
-  :root { --c: #1f5fbf; --bg: #f4f6fa; --line: #dde3ec; --text: #222; --muted: #667; --warn: #d98a00; --bad: #d33; --ok: #1a9c4b; }
+  :root { --c: #1f5fbf; --bg: #dfe4ea; --line: #dde3ec; --card-line: #c9d1dc; --card-shadow: 0 1px 3px rgba(20, 30, 50, .08); --text: #222; --muted: #667; --warn: #d98a00; --bad: #d33; --ok: #1a9c4b; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; font-size: 14px; line-height: 1.5; }
   .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 16px 80px; }
   header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
   h1 { font-size: 20px; margin: 0; color: var(--c); }
-  .card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .card { background: #fff; border: 1px solid var(--card-line); box-shadow: var(--card-shadow); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .btn { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--c); color: #fff; cursor: pointer; font: inherit; text-decoration: none; display: inline-block; }
   .btn.sec { background: #fff; color: var(--c); border: 1px solid var(--c); }
