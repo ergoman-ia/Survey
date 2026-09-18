@@ -203,7 +203,6 @@ const AiClient = {
   async call(payload, _retry) {
     this.lastAttempts = null;
     if (!this.configured()) throw new Error('firebase-config.js의 MAIL_CONFIG(발송 서버)가 설정되지 않았습니다.');
-    const t0 = Date.now();
     const res = await fetch(MAIL_CONFIG.appsScriptUrl, { method: 'POST', body: JSON.stringify({ key: MAIL_CONFIG.apiKey, ...payload }), redirect: 'follow' });
     const text = await res.text();
     let data;
@@ -211,9 +210,9 @@ const AiClient = {
     catch {
       const d = this.describeHtml(text, res.status);
       // 구글의 일시 오류 화면이면 3초 뒤 한 번 자동 재시도 (메일 발송은 서버가 이미 실행했을 수 있으므로 재시도하지 않음)
-      // AI 요청은 오래 걸린 뒤 실패했으면 서버가 이미 Gemini를 불러 한도를 썼을 수 있으므로, 빨리(8초 안에) 실패했을 때만 재시도
-      const quick = Date.now() - t0 < 8000;
-      if (!d.login && !_retry && payload.action !== 'send' && (payload.action !== 'ai' || quick)) { await new Promise(r => setTimeout(r, 3000)); return this.call(payload, true); }
+      // AI 요청도 한 번 재시도합니다. 서버가 이미 결과를 만들어 두었다면 30분 보관(ai20~)에서 꺼내 오므로 한도를 다시 쓰지 않습니다.
+      //  (예전에는 오래 걸린 AI 요청은 재시도하지 않았는데, 그러면 일시적인 구글 오류 화면이 그대로 실패로 남았음)
+      if (!d.login && !_retry && payload.action !== 'send') { await new Promise(r => setTimeout(r, 3000)); return this.call(payload, true); }
       const e = new Error('서버가 JSON 대신 HTML 화면을 돌려줬습니다. ' + d.text);
       e.unparsable = true; e.htmlInfo = d.text; throw e;
     }
@@ -231,6 +230,12 @@ const AiClient = {
   // 오류 메시지를 한 줄 원인으로 줄임 (화면 안내용)
   shortReason(msg) {
     const m = String(msg || '');
+    // 발송 서버(Apps Script)가 JSON 대신 구글 오류 화면을 돌려준 경우: 그 화면의 HTTP 번호를 모델 오류(404 등)로 오해하지 않도록 먼저 구분
+    if (/서버가 JSON 대신 HTML 화면을 돌려줬습니다/.test(m)) {
+      const code = (m.match(/HTML 화면을 돌려줬습니다\. HTTP (\d+)/) || [])[1];
+      if (/로그인|accounts\.google|Sign in/i.test(m)) return '발송 서버 배포의 액세스 권한이 "모든 사용자"가 아닙니다.';
+      return `발송 서버(Apps Script)가 오류 화면을 돌려줬습니다${code ? '(HTTP ' + code + ')' : ''} — 구글 쪽 일시 오류일 수 있으니 다시 시도하세요. 반복되면 AI 로그의 전체 문장을 확인하세요.`;
+    }
     // 서버(Code.gs ai19): 모든 모델이 쉬는 중 → "잠시 후"가 아니라 다시 쓸 수 있는 시각을 알려 줌(일일 한도면 몇 시간 뒤일 수 있음)
     if (/사용 가능한 AI 모델이 없습니다/.test(m)) { const t = m.match(/약 ([^()]+?) 뒤\(한국 시간 (\d{2}:\d{2})\)/); return '사용 가능한 AI 모델이 없습니다(모든 모델이 한도 초과로 쉬는 중)' + (t ? ` — 약 ${t[1]} 뒤(${t[2]}) 다시 쓸 수 있습니다.` : ' — 잠시 후 다시 시도하세요.'); }
     if (/403|Permission denied|PERMISSION_DENIED|suspended|API_KEY_INVALID|API key not valid|400.*key/i.test(m)) return 'Gemini API 키 권한 문제 — 키가 유효한지, 키의 API 제한과 프로젝트의 Generative Language API 사용 설정을 확인하세요.';
@@ -248,6 +253,6 @@ const AiClient = {
     const d = await this.call({ action: 'ai', task, payload });
     // 서버가 ok:true인데 result가 없는 경우(배포 버전 불일치 등)를 그대로 넘기면 화면 코드가 이해하기 어려운 오류를 냅니다
     if (d.result === undefined || d.result === null) throw new Error(`서버가 결과 없이 응답했습니다(작업 ${task}). 서버 응답: ${JSON.stringify(d).slice(0, 200)} — Apps Script를 최신 Code.gs로 "새 버전" 배포했는지 확인하세요.`);
-    return { model: d.model, result: d.result, attempts: d.attempts || [] };
+    return { model: d.model, result: d.result, attempts: d.attempts || [], reusedAt: d.reusedAt || null };   // reusedAt: 서버에 저장된 결과를 재사용했으면 그 결과를 만든 시각
   }
 };

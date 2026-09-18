@@ -1004,7 +1004,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const s = aiSum(qid); if (!s) return '';
     const r = s.result, total = (r.sentiment ? (r.sentiment.positive || 0) + (r.sentiment.negative || 0) + (r.sentiment.neutral || 0) : 0);
     return `<div class="hint" style="background:#f3f7ff;border-color:#cfdcf5">
-      <div class="row" style="justify-content:space-between"><b>AI 요약</b><span class="muted">${esc(s.model)} · ${esc(fmt(s.at))} · 응답 ${s.count}건 기준</span></div>
+      <div class="row" style="justify-content:space-between"><b>AI 요약</b><span class="muted">${esc(s.model)} · ${esc(fmt(s.at))}${s.reusedAt ? ` (${esc(fmt(s.reusedAt))}에 만든 결과 재사용)` : ''} · 응답 ${s.count}건 기준</span></div>
       <p style="margin:6px 0">${esc(r.summary || '')}</p>
       ${(r.themes || []).length ? `<table style="margin:6px 0"><tr><th>주제</th><th>응답 수</th><th>대표 의견</th></tr>${r.themes.map(t => `<tr><td>${esc(t.theme)}</td><td>${t.count}</td><td style="white-space:normal">${(t.quotes || []).map(q => '“' + esc(q) + '”').join('<br>')}</td></tr>`).join('')}</table>` : ''}
       ${total ? `<div class="muted">긍정 ${r.sentiment.positive || 0} · 부정 ${r.sentiment.negative || 0} · 중립 ${r.sentiment.neutral || 0}</div>` : ''}
@@ -1119,7 +1119,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   function attemptsText(list) {
     if (!list || !list.length) return '';
     const f = n => (n || 0).toLocaleString('ko-KR');
-    return list.map(a => a.skipped ? `${a.model} 건너뜀(쿨다운)` : `${a.model} ${a.ok ? '성공' : (a.error || '실패').replace(/^HTTP /, '').slice(0, 40)} (${(a.ms / 1000).toFixed(1)}초${a.tokens ? `, 입력 ${f(a.tokens.in)}·출력 ${f(a.tokens.out)}·생각 ${f(a.tokens.think)} 토큰` : ''})`).join(' → ');
+    return list.map(a => a.note ? a.note : a.skipped ? `${a.model} 건너뜀(쿨다운)` : `${a.model} ${a.ok ? '성공' : (a.error || '실패').replace(/^HTTP /, '').slice(0, 40)} (${(a.ms / 1000).toFixed(1)}초${a.tokens ? `, 입력 ${f(a.tokens.in)}·출력 ${f(a.tokens.out)}·생각 ${f(a.tokens.think)} 토큰` : ''})`).join(' → ');
   }
   function aiTimerStart(label) {
     aiTimerStop(); AI_LOG.t0 = Date.now(); AI_LOG.label = label;
@@ -1180,9 +1180,9 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
         if (exhausted) { failed.push(q.id); delete summary[q.id]; if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 요청 안 함 — 사용 가능한 모델 없음`); continue; }
         if (still(sid)) aiTimerStart(`AI 요약 중 (${i + 1}/${textQs.length}) ${qt.slice(0, 30)} · ${answers.length}건`);
         try {
-          const { model, result, attempts } = await AiClient.run('summarize', { title: cur.title, question: qt, answers: answers.slice(0, 500) });
+          const { model, result, attempts, reusedAt } = await AiClient.run('summarize', { title: cur.title, question: qt, answers: answers.slice(0, 500) });
           const sec = aiTimerStop();
-          summary[q.id] = { result, model, at: Date.now(), count: answers.length }; lastModel = model; done++; if (!firstDone) firstDone = q.id;
+          summary[q.id] = { result, model, at: Date.now(), count: answers.length, ...(reusedAt ? { reusedAt } : {}) };   // reusedAt: 새로 만들지 않고 저장된 결과를 쓴 경우 원래 만든 시각 lastModel = model; done++; if (!firstDone) firstDone = q.id;
           if (still(sid)) { aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 완료 · ${model} · ${sec}초 · 주제 ${(result.themes || []).length}개`); if (attempts && attempts.length) aiLog('  모델 시도: ' + attemptsText(attempts)); }
         } catch (err) {
           aiTimerStop(); failed.push(q.id); delete summary[q.id];
@@ -1276,8 +1276,8 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
         const partData = part === 'results' ? { survey: data.survey, counts: data.counts, questions: data.questions.map(q => { const c = { ...q }; delete c.AI요약; return c; }) }
           : part === 'insights' ? data : { survey: data.survey, counts: data.counts, 문항수: data.questions.length };
         const ts = Date.now();
-        const { model, result, attempts } = await AiClient.run('report_part', { part, data: partData });
-        doneParts++; const n = ++step; models.add(model);
+        const { model, result, attempts, reusedAt } = await AiClient.run('report_part', { part, data: partData });
+        doneParts++; const n = ++step; models.add(reusedAt ? `${model}(${label} ${fmtShort(reusedAt)} 결과 재사용)` : model);
         if (still(sid)) { AI_LOG.label = `AI 보고서 작성 중 — ${PARTS.length}부분 동시 요청 (${doneParts}/${PARTS.length} 완료)`; aiLog(`(${n}/${totalSteps}) ${label} 완료 · ${model} · ${Math.round((Date.now() - ts) / 1000)}초` + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : '')); }
         // 모델이 sections 없이 배열만 돌려주거나 다른 키를 쓰는 경우도 받아 줌
         const list = Array.isArray(result) ? result : (result && (result.sections || result.items || result.parts)) || [];
