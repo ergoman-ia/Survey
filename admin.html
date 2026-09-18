@@ -1017,11 +1017,12 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const hasSum = CUR.ai.summary && Object.keys(CUR.ai.summary).length, hasRep = !!CUR.ai.report;
     const partialOk = Array.isArray(CUR.ai.summaryFailed) && CUR.ai.summaryFailed.length && sigEq(CUR.ai.summaryPartialBasis, sig);   // 일부 실패 상태(응답 그대로)는 지우지 않음
     const dropSum = hasSum && !aiFresh('summary') && !partialOk, dropRep = hasRep && !aiFresh('report');
-    if (!dropSum && !dropRep) return;
-    const ai = { ...CUR.ai }; if (dropSum) { delete ai.summary; delete ai.summaryBasis; delete ai.summaryFailed; delete ai.summaryPartialBasis; } if (dropRep) { delete ai.report; delete ai.reportBasis; }
+    const dropParts = !!CUR.ai.reportParts && !sigEq(CUR.ai.reportPartsBasis, sig);   // 응답이 바뀌면 이어 쓰려고 저장해 둔 보고서 부분도 지움
+    if (!dropSum && !dropRep && !dropParts) return;
+    const ai = { ...CUR.ai }; if (dropSum) { delete ai.summary; delete ai.summaryBasis; delete ai.summaryFailed; delete ai.summaryPartialBasis; } if (dropRep) { delete ai.report; delete ai.reportBasis; } if (dropParts) { delete ai.reportParts; delete ai.reportPartsBasis; delete ai.reportPartsSum; }
     try { await writeAi(SID, ai); CUR.ai = ai; }
     catch (err) { console.warn('예전 AI 결과 삭제 실패', err); return; }
-    aiLog(`응답이 바뀌어 예전 AI ${[dropSum && '주관식 요약', dropRep && '보고서'].filter(Boolean).join('·')} 결과를 지웠습니다 (응답 ${sig.count}건 기준으로 다시 만들 수 있음)`);
+    aiLog(`응답이 바뀌어 예전 AI ${[dropSum && '주관식 요약', (dropRep || dropParts) && '보고서'].filter(Boolean).join('·')} 결과를 지웠습니다 (응답 ${sig.count}건 기준으로 다시 만들 수 있음)`);
     renderCharts(); renderReport(); renderAiButtons();
   }
   function renderAiButtons() {
@@ -1031,7 +1032,8 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const sumOk = allowed && aiFresh('summary'), repOk = allowed && aiFresh('report');
     document.querySelectorAll('.ai-wrap').forEach(w => w.classList.toggle('open', !allowed));
     const partial = allowed && !sumOk && CUR.ai && Array.isArray(CUR.ai.summaryFailed) && CUR.ai.summaryFailed.length && sigEq(CUR.ai.summaryPartialBasis, respSig());
-    sBtn.textContent = sumOk ? 'AI 주관식 요약 완료' : partial ? `AI 주관식 요약 (실패 ${CUR.ai.summaryFailed.length}개 다시 시도)` : 'AI 주관식 요약'; rBtn.textContent = repOk ? 'AI 보고서 작성 완료' : 'AI 보고서 작성';
+    sBtn.textContent = sumOk ? 'AI 주관식 요약 완료' : partial ? `AI 주관식 요약 (실패 ${CUR.ai.summaryFailed.length}개 다시 시도)` : 'AI 주관식 요약'; const repPart = allowed && !repOk && CUR.ai && CUR.ai.reportParts && sigEq(CUR.ai.reportPartsBasis, respSig());
+    rBtn.textContent = repOk ? 'AI 보고서 작성 완료' : repPart ? `AI 보고서 작성 (남은 ${3 - Object.keys(CUR.ai.reportParts).length}부분 이어서)` : 'AI 보고서 작성';
     sBtn.disabled = !allowed || sumOk; rBtn.disabled = !allowed || repOk;
     if (!allowed) { gate.style.display = ''; gate.textContent = '설문이 진행 중이라 AI 요약·보고서를 만들 수 없습니다. ' + (CUR.deadline ? `마감일 ${fmtDeadline(CUR.deadline)}${CUR.closeAfterDeadline ? '이 지나면 자동으로 열립니다.' : ' — "마감일 이후 응답 차단"이 꺼져 있으면 마감일이 지나도 진행 중으로 남으니, 응답이 끝났으면 "보관"을 누르세요.'}` : '마감일이 없으니 응답이 끝났으면 "보관"을 누르세요.'); }
     else if (sumOk || repOk) { gate.style.display = ''; gate.textContent = `저장된 AI 결과(응답 ${respSig().count}건 기준)를 그대로 보여 줍니다. 응답이 추가·삭제되면 자동으로 지워지고 버튼이 다시 열립니다.`; }
@@ -1068,6 +1070,9 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
   function aiTimerStop() { if (AI_LOG.timer) clearInterval(AI_LOG.timer); AI_LOG.timer = null; return Math.round((Date.now() - AI_LOG.t0) / 1000); }
   function aiPanelReset() { aiTimerStop(); AI_LOG.lines = []; $('aiInfo').textContent = ''; $('aiLog').textContent = ''; $('aiLog').style.display = 'none'; $('reportArea').innerHTML = ''; }
   const chainText = (st, kind) => (st.models && st.models[kind] ? st.models[kind].join(' → ') : '서버 설정 순서');
+  // 서버(Code.gs ai19)가 "모든 모델이 쉬는 중"일 때 돌려주는 문장. 이 오류가 나면 같은 작업의 남은 요청은 보내지 않음(보내도 전부 실패)
+  const isAiExhausted = err => /사용 가능한 AI 모델이 없습니다|모든 모델이 실패했습니다/.test(String((err && err.message) || err || ''));
+  const retryHint = err => { const m = String((err && err.message) || '').match(/약 ([^()]+?) 뒤\(한국 시간 (\d{2}:\d{2})\)/); return m ? `약 ${m[1]} 뒤(${m[2]})` : '잠시 뒤'; };
   // 현재 화면이 sid 설문이 아니면 UI 갱신을 건너뜀
   const still = sid => sid === SID;
   const isTextQ = q => q.type === 'short' || q.type === 'long';
@@ -1090,6 +1095,7 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     $('aiSummarize').disabled = true; $('aiReport').disabled = true;
     const summary = Object.assign({}, (base || {}).summary || {}); let done = 0, lastModel = '', firstDone = null;
     const failed = [];   // 실패한 문항 ID
+    let exhausted = null;   // 모든 모델 소진 오류(이후 문항은 요청하지 않고 실패 목록에만 넣음)
     try {
       // 이전 실행에서 일부만 실패했고 응답이 그대로면, 성공한 문항은 건너뛰고 실패한 문항만 다시 요약
       const prevPartial = base && Array.isArray(base.summaryFailed) && base.summaryFailed.length && sigEq(base.summaryPartialBasis, basis) ? new Set(base.summaryFailed) : null;
@@ -1099,17 +1105,24 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
         if (prevPartial && !prevPartial.has(q.id) && summary[q.id]) { done++; if (!firstDone) firstDone = q.id; if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 지난번 결과 유지`); continue; }
         const answers = list.map(r => r.answers?.[q.id]).filter(a => typeof a === 'string' && a.trim());
         if (!answers.length) { delete summary[q.id]; if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 답변 없음 → 건너뜀`); continue; }
+        if (exhausted) { failed.push(q.id); delete summary[q.id]; if (still(sid)) aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 요청 안 함 — 사용 가능한 모델 없음`); continue; }
         if (still(sid)) aiTimerStart(`AI 요약 중 (${i + 1}/${textQs.length}) ${qt.slice(0, 30)} · ${answers.length}건`);
         try {
           const { model, result, attempts } = await AiClient.run('summarize', { title: cur.title, question: qt, answers: answers.slice(0, 500) });
           const sec = aiTimerStop();
           summary[q.id] = { result, model, at: Date.now(), count: answers.length }; lastModel = model; done++; if (!firstDone) firstDone = q.id;
           if (still(sid)) { aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 완료 · ${model} · ${sec}초 · 주제 ${(result.themes || []).length}개`); if (attempts && attempts.length) aiLog('  모델 시도: ' + attemptsText(attempts)); }
-        } catch (err) { aiTimerStop(); failed.push(q.id); delete summary[q.id]; if (still(sid)) { aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 실패: ${err.message}`); if (AiClient.lastAttempts) aiLog('  모델 시도: ' + attemptsText(AiClient.lastAttempts)); } await Modal.alert(`"${qt.slice(0, 30)}" 요약 실패: ${AiClient.shortReason(err.message)}`); }
+        } catch (err) {
+          aiTimerStop(); failed.push(q.id); delete summary[q.id];
+          if (still(sid)) { aiLog(`(${i + 1}/${textQs.length}) "${qt.slice(0, 20)}" 실패: ${err.message}`); if (AiClient.lastAttempts) aiLog('  모델 시도: ' + attemptsText(AiClient.lastAttempts)); }
+          if (isAiExhausted(err)) exhausted = err;   // 알림은 끝에 한 번만
+          else await Modal.alert(`"${qt.slice(0, 30)}" 요약 실패: ${AiClient.shortReason(err.message)}`);
+        }
       }
       // 하나라도 실패하면 "완료"로 취급하지 않음: 지문(summaryBasis)을 저장하지 않아 버튼이 다시 열리고, 실패 목록을 남겨 다음에 그 문항만 다시 시도
       const patch = failed.length ? { summary, summaryBasis: null, summaryFailed: failed, summaryPartialBasis: basis } : { summary, summaryBasis: basis, summaryFailed: [], summaryPartialBasis: null };
       try { await saveAiTo(sid, base, patch); } catch (err) { await Modal.alert('요약 저장 실패: ' + err.message); }
+      if (exhausted) await Modal.alert(`지금은 사용 가능한 AI 모델이 없어 요약을 멈췄습니다(성공 ${done}개, 남은 ${failed.length}개).\n${retryHint(exhausted)} 버튼을 다시 누르면 남은 문항만 이어서 요약합니다.`);
     } finally { aiFinish(sid); }
     if (!still(sid)) return;   // 진행 중 다른 설문으로 바꿨으면 그 설문 기준으로만 버튼 갱신(aiFinish에서 함)
     if (failed.length) { aiLog(`요약 미완료: ${done}개 성공, ${failed.length}개 실패 — 버튼을 다시 누르면 실패한 문항만 다시 시도합니다`); $('aiInfo').textContent = `AI 요약 미완료 (성공 ${done}, 실패 ${failed.length})`; }
@@ -1175,13 +1188,18 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
     const PARTS = [['overview', '조사 개요·응답 현황'], ['results', '주요 결과'], ['insights', '시사점 및 개선 제안']];
     const totalSteps = PARTS.length;
     aiLogClear(); aiLog(`보고서 작성 시작: 문항 ${data.questions.length}개, 응답 ${data.counts.응답합계}건${textSection ? ', 주관식 요약 ' + Object.keys(base.summary).length + '개 그대로 사용' : ''} · ${PARTS.length}부분으로 나눠 동시 작성(모델 순서 ${chainText(st, 'lite')})`);
+    // 지난번에 일부만 성공했고 응답·주관식 요약이 그대로면, 성공한 부분은 다시 요청하지 않음
+    const sumKey = base && base.summary ? Object.keys(base.summary).sort().map(k => k + ':' + (base.summary[k].at || 0)).join(',') : '';
+    const prevParts = base && base.reportParts && sigEq(base.reportPartsBasis, basis) && (base.reportPartsSum || '') === sumKey ? base.reportParts : {};
     const t0 = Date.now(); let step = 0; const models = new Set();
     const elapsed = () => Math.round((Date.now() - t0) / 1000);
     try {
       // 1단계: 세 부분을 동시에 요청 (순서대로 기다리면 시간이 더해지므로 병렬로) — 걸리는 시간 = 가장 느린 부분 하나
       if (still(sid)) aiTimerStart(`AI 보고서 작성 중 — ${PARTS.length}부분 동시 요청 (0/${PARTS.length} 완료)`);
       let doneParts = 0;
-      const partResults = await Promise.all(PARTS.map(async ([part, label]) => {
+      // allSettled: 한 부분이 실패해도 나머지 부분의 결과는 버리지 않음
+      const settled = await Promise.allSettled(PARTS.map(async ([part, label]) => {
+        if (Array.isArray(prevParts[part])) { doneParts++; ++step; if (still(sid)) aiLog(`(${step}/${totalSteps}) ${label} 지난번 결과 사용 (요청 안 함)`); return prevParts[part]; }
         const partData = part === 'results' ? { survey: data.survey, counts: data.counts, questions: data.questions.map(q => { const c = { ...q }; delete c.AI요약; return c; }) }
           : part === 'insights' ? data : { survey: data.survey, counts: data.counts, 문항수: data.questions.length };
         const ts = Date.now();
@@ -1194,12 +1212,23 @@ if (!window.QRCode) document.write('<script src="vendor/qrcode.min.js"><\/script
         return list.filter(x => x && x.heading && x.body).map(x => ({ heading: x.heading, body: x.body }));
       }));
       aiTimerStop();
-      const sections = partResults.flat();
+      const parts = {}, failedParts = [];
+      settled.forEach((r, k) => { if (r.status === 'fulfilled') parts[PARTS[k][0]] = r.value; else failedParts.push([PARTS[k][1], r.reason]); });
+      if (failedParts.length) {
+        // 성공한 부분만 저장해 두고 끝냄 → 다음에 누르면 실패한 부분만 요청
+        try { await saveAiTo(sid, base, { reportParts: parts, reportPartsBasis: basis, reportPartsSum: sumKey }); } catch (e) { console.warn('보고서 부분 저장 실패', e); }
+        if (still(sid)) { failedParts.forEach(([label, e]) => aiLog(`${label} 실패: ${AiClient.shortReason(e.message)} (${String(e.message).slice(0, 80)})`)); $('aiInfo').textContent = `보고서 미완료 (${Object.keys(parts).length}/${PARTS.length}부분 완료)`; renderAiButtons(); }
+        const ex = failedParts.map(x => x[1]).find(isAiExhausted);
+        await Modal.alert(`보고서 ${PARTS.length}부분 중 ${failedParts.length}부분(${failedParts.map(x => x[0]).join(', ')})을 만들지 못했습니다.\n` +
+          (ex ? `지금은 사용 가능한 AI 모델이 없습니다. ${retryHint(ex)} ` : `원인: ${AiClient.shortReason(failedParts[0][1].message)}\n`) + '버튼을 다시 누르면 실패한 부분만 요청합니다(성공한 부분은 저장해 둠).');
+        return;
+      }
+      const sections = PARTS.flatMap(([part]) => parts[part] || []);
       if (!sections.length) throw new Error('세 부분 모두 절이 만들어지지 않았습니다. 로그의 모델 응답을 확인하세요.');
       if (textSection) { const idx = sections.findIndex(x => /시사점|제안|결론/.test(x.heading || '')); sections.splice(idx < 0 ? sections.length : idx, 0, textSection); }
       const result = { title: `${cur.title} 결과 보고서`, sections };
       const model = [...models].join(' + '), total = elapsed();
-      await saveAiTo(sid, base, { report: { result, model, at: Date.now() }, reportBasis: basis });
+      await saveAiTo(sid, base, { report: { result, model: model || '지난번 결과', at: Date.now() }, reportBasis: basis, reportParts: null, reportPartsBasis: null, reportPartsSum: null });
       if (!still(sid)) return;
       aiLog(`보고서 완료 · ${model} · 총 ${total}초 · 절 ${sections.length}개`);
       $('aiInfo').textContent = `보고서 작성 완료 (${model}, ${total}초)`; renderReport(); $('reportArea').scrollIntoView({ behavior: 'smooth' });

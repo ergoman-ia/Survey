@@ -646,6 +646,10 @@
   function log(id, msg) { const L = LOGS[id] = LOGS[id] || []; L.push(`[${hhmmss()}] ${msg}`); const el = $(id); el.textContent = L.join('\n'); el.style.display = ''; el.scrollTop = el.scrollHeight; }
   function logClear(id) { LOGS[id] = []; const el = $(id); el.textContent = ''; el.style.display = 'none'; }
   function timer(msgEl, label) { const t0 = Date.now(); const tick = () => { msgEl.textContent = `${label} · ${Math.round((Date.now() - t0) / 1000)}초 경과`; }; tick(); const h = setInterval(tick, 1000); return () => { clearInterval(h); return Math.round((Date.now() - t0) / 1000); }; }
+  // 서버(Code.gs ai19)가 "모든 모델이 쉬는 중"일 때 돌려주는 문장을 알아보고, 다시 쓸 수 있는 시각을 알림에 그대로 보여 줌
+  const isAiExhausted = err => /사용 가능한 AI 모델이 없습니다|모든 모델이 실패했습니다/.test(String((err && err.message) || err || ''));
+  const retryHint = err => { const m = String((err && err.message) || '').match(/약 ([^()]+?) 뒤\(한국 시간 (\d{2}:\d{2})\)/); return m ? `약 ${m[1]} 뒤(${m[2]})` : '잠시 뒤'; };
+  const aiFailText = (what, err) => isAiExhausted(err) ? `${what}: 지금은 사용 가능한 AI 모델이 없습니다(모든 모델이 한도 초과로 쉬는 중).\n${retryHint(err)} 다시 시도해 주세요.` : `${what}: ${AiClient.shortReason(err.message)}`;
   const attemptsText = list => (list || []).map(a => a.skipped ? `${a.model} 건너뜀(쿨다운)` : `${a.model} ${a.ok ? '성공' : (a.error || '실패').replace(/^HTTP /, '').slice(0, 40)} (${(a.ms / 1000).toFixed(1)}초${a.tokens ? `, 입력 ${(a.tokens.in || 0).toLocaleString('ko-KR')}·출력 ${(a.tokens.out || 0).toLocaleString('ko-KR')}·생각 ${(a.tokens.think || 0).toLocaleString('ko-KR')} 토큰` : ''})`).join(' → ');
   const chainText = (st, kind) => (st && st.models && st.models[kind] ? st.models[kind].join(' → ') : '서버 설정 순서');
   $('aiDraftBtn').onclick = async () => {
@@ -668,7 +672,7 @@
       $('aiDraftMsg').innerHTML = `<b style="color:var(--ok);font-size:14px">초안 완성</b> — 문항 ${qs.length}개 추가 (${esc(used)}). 노란 표시 문항을 확인하고 저장하세요.` + esc(short);
       log('aiDraftLog', `문항 ${qs.length}개를 편집기에 넣었습니다: ` + qs.map(q => SURVEY_TYPES[q.type].name).join(', ') + (short ? ' — 요청보다 적음' : ''));
       markDirty(); renderAll();
-    } catch (err) { stop(); $('aiDraftMsg').textContent = ''; log('aiDraftLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert('초안 생성 실패: ' + AiClient.shortReason(err.message)); }
+    } catch (err) { stop(); $('aiDraftMsg').textContent = ''; log('aiDraftLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert(aiFailText('초안 생성 실패', err)); }
     $('aiDraftBtn').disabled = false;
   };
   $('aiReviewBtn').onclick = async () => {
@@ -768,7 +772,7 @@
         b.textContent = '적용됨'; b.disabled = true;
       });
       $('aiReviewMsg').textContent = `${(result.items || []).length}건`;
-    } catch (err) { stop(); $('aiReviewMsg').textContent = ''; log('aiReviewLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert('검토 실패: ' + AiClient.shortReason(err.message)); }
+    } catch (err) { stop(); $('aiReviewMsg').textContent = ''; log('aiReviewLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert(aiFailText('검토 실패', err)); }
     $('aiReviewBtn').disabled = false;
   };
   // 가져온 문항을 기존 문항 뒤에 붙일지, 기존 문항을 지우고 바꿀지 묻습니다. 취소(Esc)는 아무것도 바꾸지 않음
@@ -801,7 +805,7 @@
           pdfLog(`AI(${used})가 문항 ${qs.length}개를 추가했습니다: ` + qs.map(q => SURVEY_TYPES[q.type].name).join(', '));
           pdfLog('노란 표시가 붙은 문항의 질문·선택지·유형을 확인한 뒤 저장하세요.');
           markDirty(); renderAll(); e.target.value = ''; return;
-        } catch (err) { pdfLog('AI 추출 실패(' + err.message + '). 규칙 방식으로 다시 시도합니다.'); }
+        } catch (err) { pdfLog((isAiExhausted(err) ? `AI 추출 건너뜀(사용 가능한 모델 없음, ${retryHint(err)} 다시 사용 가능)` : 'AI 추출 실패(' + err.message + ')') + '. 규칙 방식으로 다시 시도합니다.'); }
       } else if (!aiOn) pdfLog('AI가 설정되지 않아 규칙 방식으로 읽습니다.');
       // 2) 규칙 방식
       const lines = await extractLines(f);

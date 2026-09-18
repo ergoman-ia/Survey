@@ -203,6 +203,7 @@ const AiClient = {
   async call(payload, _retry) {
     this.lastAttempts = null;
     if (!this.configured()) throw new Error('firebase-config.js의 MAIL_CONFIG(발송 서버)가 설정되지 않았습니다.');
+    const t0 = Date.now();
     const res = await fetch(MAIL_CONFIG.appsScriptUrl, { method: 'POST', body: JSON.stringify({ key: MAIL_CONFIG.apiKey, ...payload }), redirect: 'follow' });
     const text = await res.text();
     let data;
@@ -210,7 +211,9 @@ const AiClient = {
     catch {
       const d = this.describeHtml(text, res.status);
       // 구글의 일시 오류 화면이면 3초 뒤 한 번 자동 재시도 (메일 발송은 서버가 이미 실행했을 수 있으므로 재시도하지 않음)
-      if (!d.login && !_retry && payload.action !== 'send') { await new Promise(r => setTimeout(r, 3000)); return this.call(payload, true); }
+      // AI 요청은 오래 걸린 뒤 실패했으면 서버가 이미 Gemini를 불러 한도를 썼을 수 있으므로, 빨리(8초 안에) 실패했을 때만 재시도
+      const quick = Date.now() - t0 < 8000;
+      if (!d.login && !_retry && payload.action !== 'send' && (payload.action !== 'ai' || quick)) { await new Promise(r => setTimeout(r, 3000)); return this.call(payload, true); }
       const e = new Error('서버가 JSON 대신 HTML 화면을 돌려줬습니다. ' + d.text);
       e.unparsable = true; e.htmlInfo = d.text; throw e;
     }
@@ -228,6 +231,8 @@ const AiClient = {
   // 오류 메시지를 한 줄 원인으로 줄임 (화면 안내용)
   shortReason(msg) {
     const m = String(msg || '');
+    // 서버(Code.gs ai19): 모든 모델이 쉬는 중 → "잠시 후"가 아니라 다시 쓸 수 있는 시각을 알려 줌(일일 한도면 몇 시간 뒤일 수 있음)
+    if (/사용 가능한 AI 모델이 없습니다/.test(m)) { const t = m.match(/약 ([^()]+?) 뒤\(한국 시간 (\d{2}:\d{2})\)/); return '사용 가능한 AI 모델이 없습니다(모든 모델이 한도 초과로 쉬는 중)' + (t ? ` — 약 ${t[1]} 뒤(${t[2]}) 다시 쓸 수 있습니다.` : ' — 잠시 후 다시 시도하세요.'); }
     if (/403|Permission denied|PERMISSION_DENIED|suspended|API_KEY_INVALID|API key not valid|400.*key/i.test(m)) return 'Gemini API 키 권한 문제 — 키가 유효한지, 키의 API 제한과 프로젝트의 Generative Language API 사용 설정을 확인하세요.';
     if (/429|quota|한도|RESOURCE_EXHAUSTED|rate/i.test(m)) return '사용 한도 초과 — 잠시 후 다시 시도하세요.';
     if (/503|overload|busy|일시적|temporar|unavailable|502|504|500/i.test(m)) return '서버가 바쁩니다 — 잠시 후 다시 시도하세요.';
