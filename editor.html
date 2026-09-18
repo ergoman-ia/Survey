@@ -650,7 +650,7 @@
   const isAiExhausted = err => /사용 가능한 AI 모델이 없습니다|모든 모델이 실패했습니다/.test(String((err && err.message) || err || ''));
   const retryHint = err => { const m = String((err && err.message) || '').match(/약 ([^()]+?) 뒤\(한국 시간 (\d{2}:\d{2})\)/); return m ? `약 ${m[1]} 뒤(${m[2]})` : '잠시 뒤'; };
   const aiFailText = (what, err) => isAiExhausted(err) ? `${what}: 지금은 사용 가능한 AI 모델이 없습니다(모든 모델이 한도 초과로 쉬는 중).\n${retryHint(err)} 다시 시도해 주세요.` : `${what}: ${AiClient.shortReason(err.message)}`;
-  const attemptsText = list => (list || []).map(a => a.skipped ? `${a.model} 건너뜀(쿨다운)` : `${a.model} ${a.ok ? '성공' : (a.error || '실패').replace(/^HTTP /, '').slice(0, 40)} (${(a.ms / 1000).toFixed(1)}초${a.tokens ? `, 입력 ${(a.tokens.in || 0).toLocaleString('ko-KR')}·출력 ${(a.tokens.out || 0).toLocaleString('ko-KR')}·생각 ${(a.tokens.think || 0).toLocaleString('ko-KR')} 토큰` : ''})`).join(' → ');
+  const attemptsText = list => (list || []).map(a => a.note ? a.note : a.skipped ? `${a.model} 건너뜀(쿨다운)` : `${a.model} ${a.ok ? '성공' : (a.error || '실패').replace(/^HTTP /, '').slice(0, 40)} (${(a.ms / 1000).toFixed(1)}초${a.tokens ? `, 입력 ${(a.tokens.in || 0).toLocaleString('ko-KR')}·출력 ${(a.tokens.out || 0).toLocaleString('ko-KR')}·생각 ${(a.tokens.think || 0).toLocaleString('ko-KR')} 토큰` : ''})`).join(' → ');
   const chainText = (st, kind) => (st && st.models && st.models[kind] ? st.models[kind].join(' → ') : '서버 설정 순서');
   $('aiDraftBtn').onclick = async () => {
     const purpose = $('aiPurpose').value.trim(); if (!purpose) return Modal.alert('설문 목적을 적어 주세요.');
@@ -682,7 +682,23 @@
     logClear('aiReviewLog'); log('aiReviewLog', `검토 요청: 문항 ${model.questions.length}개 · 모델 순서 ${chainText(st, 'lite')}`);
     const stop = timer($('aiReviewMsg'), '검토 중');
     try {
-      const { model: used, result, attempts } = await AiClient.run('review', { title: model.title, questions: model.questions.map((q, i) => ({ index: i, type: q.type, title: q.title, description: q.description || '', required: !!q.required, options: q.options, allowOther: !!q.allowOther, min: q.min, max: q.max, labels: q.labels })) });
+      const { model: used, result: rawResult, attempts } = await AiClient.run('review', { title: model.title, questions: model.questions.map((q, i) => ({ index: i, type: q.type, title: q.title, description: q.description || '', required: !!q.required, options: q.options, allowOther: !!q.allowOther, min: q.min, max: q.max, labels: q.labels })) });
+      // 안전장치: 모델이 유형에 없는 속성을 지적하면(별점에 척도 설명, 주관식에 선택지 등) 그 지적을 버리고, fix에서도 그 유형에 없는 항목을 뺌
+      const result = (() => {
+        const r = rawResult || {}; const isChoice = t => t === 'single' || t === 'multi' || t === 'dropdown';
+        const dropped = [];
+        r.items = (r.items || []).filter(it => {
+          const q = model.questions[it.index]; if (!q) return true;
+          const txt = (it.issue || '') + ' ' + (it.suggestion || '');
+          const bad = (q.type !== 'scale' && /labels|양 끝|척도 설명|최저점|최고점|선형 배율/.test(txt))
+            || (!isChoice(q.type) && /선택지|options|상호배타|기타\s*\(/.test(txt) && !/척도|점/.test(txt) && q.type !== 'scale' && q.type !== 'rating');
+          if (bad) dropped.push(`${it.index + 1}번(${SURVEY_TYPES[q.type].name}) "${(it.issue || '').slice(0, 40)}"`);
+          if (!bad && it.fix) { const f = it.fix; if (q.type !== 'scale') { delete f.labels; delete f.min; } if (q.type !== 'scale' && q.type !== 'rating') delete f.max; if (!isChoice(q.type)) { delete f.options; delete f.allowOther; } }
+          return !bad;
+        });
+        if (dropped.length) log('aiReviewLog', '유형에 맞지 않는 지적 ' + dropped.length + '건은 표시하지 않았습니다: ' + dropped.join(' / '));
+        return r;
+      })();
       const sec = stop();
       // 문항 번호 검증: 모델이 1부터 세거나 번호를 틀리면 원문 질문(original)으로 다시 찾음. 못 찾으면 그 지적은 버림
       const norm = t => String(t || '').replace(/\s+/g, ' ').trim();
