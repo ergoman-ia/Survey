@@ -12,7 +12,7 @@
   - 오른쪽 위 "관리자 모드"(admin.html). 설문 편집 페이지(editor.html)는 관리자 모드 안에서 갑니다.
 -->
 <style>
-  :root { --c: #1f5fbf; --bg: #dfe4ea; --line: #dde3ec; --card-line: #c9d1dc; --card-shadow: 0 1px 3px rgba(20, 30, 50, .08); --text: #222; --muted: #667; --ok: #1a9c4b; }
+  :root { --c: #1f5fbf; --bg: #dfe4ea; --line: #dde3ec; --card-line: #c9d1dc; --card-shadow: 0 1px 3px rgba(20, 30, 50, .08); --field-bg: #f2f4f7; --text: #222; --muted: #667; --ok: #1a9c4b; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; line-height: 1.6; }
   .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 60px; }
@@ -26,7 +26,7 @@
   .pagenav a:hover, .pagenav button:hover { background: #e4dbf7; }
   .card { background: #fff; border: 1px solid var(--card-line); box-shadow: var(--card-shadow); border-radius: 12px; padding: 18px 20px; margin-bottom: 12px; }
   .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
-  .toolbar input, .toolbar select { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; background: #fff; }
+  .toolbar input, .toolbar select { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; background: var(--field-bg); }
   .toolbar input { flex: 1; min-width: 200px; }
   .tabs { display: flex; gap: 6px; }
   .tabs button { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 14px; font: inherit; cursor: pointer; color: var(--muted); }
@@ -68,6 +68,9 @@
   .login .btns { display: flex; justify-content: flex-end; gap: 8px; }
   .login .btns button { padding: 8px 18px; border-radius: 8px; border: 1px solid var(--c); font: inherit; cursor: pointer; background: #fff; color: var(--c); }
   .login .btns button.primary { background: var(--c); color: #fff; }
+  /* 입력 칸·목록 상자: 흰 컨테이너 안에서 구별되도록 아주 옅은 회색 바탕(세 화면 공통), 입력 중에는 흰색 */
+  input[type=text], input[type=email], input[type=password], input[type=date], input[type=search], select, textarea { background-color: var(--field-bg); }
+  input[type=text]:focus, input[type=email]:focus, input[type=password]:focus, input[type=date]:focus, input[type=search]:focus, select:focus, textarea:focus { background-color: #fff; }
 </style>
 </head>
 <body>

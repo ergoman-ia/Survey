@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>설문 편집</title>
 <style>
-  :root { --c: #1f5fbf; --bg: #dfe4ea; --line: #dde3ec; --card-line: #c9d1dc; --card-shadow: 0 1px 3px rgba(20, 30, 50, .08); --text: #222; --muted: #667; --warn: #d98a00; --bad: #d33; --ok: #1a9c4b; }
+  :root { --c: #1f5fbf; --bg: #dfe4ea; --line: #dde3ec; --card-line: #c9d1dc; --card-shadow: 0 1px 3px rgba(20, 30, 50, .08); --field-bg: #f2f4f7; --text: #222; --muted: #667; --warn: #d98a00; --bad: #d33; --ok: #1a9c4b; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; font-size: 14px; line-height: 1.5; }
   .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 16px 80px; }
@@ -57,6 +57,9 @@
   .hint { background: #fff8e6; border: 1px solid #f3dca0; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 10px; }
   .addbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   #pdfLog { font-size: 12px; color: var(--muted); white-space: pre-wrap; max-height: 120px; overflow: auto; }
+  /* 입력 칸·목록 상자: 흰 컨테이너 안에서 구별되도록 아주 옅은 회색 바탕(세 화면 공통), 입력 중에는 흰색 */
+  input[type=text], input[type=email], input[type=password], input[type=date], input[type=search], select, textarea { background-color: var(--field-bg); }
+  input[type=text]:focus, input[type=email]:focus, input[type=password]:focus, input[type=date]:focus, input[type=search]:focus, select:focus, textarea:focus { background-color: #fff; }
 </style>
 </head>
 <body>
