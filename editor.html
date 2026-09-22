@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설문 편집</title>
+<style>
+  :root { --c: #1f5fbf; --bg: #dfe4ea; --line: #dde3ec; --card-line: #c9d1dc; --card-shadow: 0 1px 3px rgba(20, 30, 50, .08); --field-bg: #e9ecf0; --text: #222; --muted: #667; --warn: #d98a00; --draft-bg: #fff8e6; --draft-line: #f3dca0; --bad: #d33; --ok: #1a9c4b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; font-size: 14px; line-height: 1.5; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 16px 80px; }
+  header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  h1 { font-size: 20px; margin: 0; color: var(--c); }
+  .card { background: #fff; border: 1px solid var(--card-line); box-shadow: var(--card-shadow); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--c); color: #fff; cursor: pointer; font: inherit; text-decoration: none; display: inline-block; }
+  .btn.sec { background: #fff; color: var(--c); border: 1px solid var(--c); }
+  .btn.sm { padding: 4px 9px; font-size: 12px; }
+  .btn.icon { padding: 4px 8px; font-size: 13px; background: #fff; color: var(--muted); border: 1px solid var(--line); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  input[type=text], input[type=date], input[type=password], select, textarea { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
+  input[type=text], textarea { width: 100%; }
+  label.chk { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .q-card { border: 1px solid var(--line); border-left: 4px solid var(--c); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; background: #fff; }
+  .q-card { transition: background-color .3s, border-color .3s; }
+  /* 초안(AI·PDF에서 가져와 아직 손대지 않은) 문항: 옅은 호박색 바탕으로 '확인·편집 필요'를 표시, 입력하면 원래 흰색으로 돌아감 */
+  .q-card.draft { background: var(--draft-bg); border-color: var(--draft-line); border-left-color: var(--warn); }
+  .q-card.draft input[type=text], .q-card.draft select { background-color: #fff; border-color: var(--draft-line); }
+  .q-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .q-head .num { font-weight: 700; color: var(--c); min-width: 26px; }
+  .q-head select { min-width: 170px; }
+  .q-body { display: grid; gap: 6px; }
+  .opt-row { display: flex; gap: 6px; align-items: center; }
+  .opt-row input { flex: 1; }
+  .q-foot { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-top: 8px; flex-wrap: wrap; }
+  .tools { display: flex; gap: 4px; }
+  .tag { display: inline-block; font-size: 11px; color: var(--warn); border: 1px solid #f3dca0; background: #fff8e6; border-radius: 999px; padding: 0 8px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; }
+  .b-bad { background: #fde3e3; color: var(--bad); } .b-warn { background: #fff3dc; color: var(--warn); } .b-gray { background: #eef0f4; color: var(--muted); }
+  .preview { position: sticky; top: 10px; max-height: calc(100vh - 20px); overflow: auto; }
+  .p-card { border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+  .p-title { font-weight: 600; margin: 0 0 8px; }
+  .req { color: #d33; margin-left: 4px; }
+  .p-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; }
+  .p-scale { display: flex; gap: 6px; }
+  .p-scale span { flex: 1; text-align: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 0; }
+  .p-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .stars { font-size: 26px; letter-spacing: 4px; color: #f5b301; }
+  .status { font-size: 12px; color: var(--muted); }
+  .ai-log { margin: 8px 0 0; padding: 6px 10px; background: #1e1e1e; color: #ddd; border-radius: 8px; font: 12px/1.5 Consolas, monospace; white-space: pre-wrap; word-break: break-all; height: calc(3em + 12px); overflow-y: auto; }
+  .status.ok { color: var(--ok); } .status.bad { color: var(--bad); }
+  /* 화면 이동 링크 묶음(설문 안내 페이지·설문 편집 페이지·관리자 모드): 세 화면 공통, 옅은 보라색 바탕 */
+  /* 다른 화면으로 가는 링크 묶음 — 옅은 보라 바탕 */
+  .pagenav { display: inline-flex; gap: 4px; align-items: center; background: #efeafb; border: 1px solid #d5c9f2; border-radius: 10px; padding: 4px; flex-wrap: nowrap; white-space: nowrap; }
+  .pagenav a, .pagenav button { color: #5b3fb0; font: inherit; font-size: 13px; text-decoration: none; border: 1px solid #b9a6e6; background: #fff; padding: 5px 8px; border-radius: 7px; white-space: nowrap; cursor: pointer; line-height: 1.4; }
+  .pagenav a:hover, .pagenav button:hover { background: #e4dbf7; }
+  .hint { background: #fff8e6; border: 1px solid #f3dca0; border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-bottom: 10px; }
+  .addbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  #pdfLog { font-size: 12px; color: var(--muted); white-space: pre-wrap; max-height: 120px; overflow: auto; }
+  /* 입력 칸·목록 상자: 흰 컨테이너 안에서 구별되도록 아주 옅은 회색 바탕(세 화면 공통), 입력 중에는 흰색 */
+  input[type=text], input[type=email], input[type=password], input[type=date], input[type=search], select, textarea { background-color: var(--field-bg); }
+  input[type=text]:focus, input[type=email]:focus, input[type=password]:focus, input[type=date]:focus, input[type=search]:focus, select:focus, textarea:focus { background-color: #fff; }
+</style>
+</head>
+<body>
+
+
+<div class="wrap" id="editorView" style="display:none">
+  <header>
+    <div class="row" style="flex-wrap:nowrap;gap:6px">
+      <h1 style="white-space:nowrap;font-size:18px">설문 편집</h1>
+      <select id="surveySel" title="편집할 설문 선택" style="width:473px;max-width:473px;flex:0 1 473px;min-width:200px"></select>
+      <button class="btn sec" id="newBtn" style="white-space:nowrap;padding:8px 10px">새 설문</button>
+      <button class="btn sec" id="dupBtn" title="지금 연 설문의 문항만 복사해 새 설문을 만듭니다" style="white-space:nowrap;padding:8px 10px">복제</button>
+    </div>
+    <div class="pagenav"><a href="index.html">설문 안내 페이지</a><a href="admin.html">관리자 모드</a></div>
+  </header>
+  <p class="status" id="status" style="margin:-4px 0 10px">불러오는 중…</p>
+
+  <div class="hint" id="noDbHint" style="display:none">Firebase가 아직 설정되지 않아 저장할 수 없습니다. firebase-config.js를 먼저 설정하세요.</div>
+
+  <div class="layout">
+    <div>
+      <div class="card" id="aiCard">
+        <div class="row" style="justify-content:space-between">
+          <h3 style="margin:0">AI로 설문 초안 만들기 <span class="muted" style="font-weight:400;font-size:12px">(새 설문에서만)</span></h3>
+          <span class="muted" id="aiStatus">확인 중…</span>
+        </div>
+        <p class="muted" style="margin:4px 0 10px">어떤 설문을 만들지 적으면 Gemini가 문항 초안을 만들어 줍니다. 만든 뒤 아래 기본 정보와 문항을 다듬어 저장하세요. 키는 발송 서버(Apps Script)의 스크립트 속성 GEMINI_API_KEY에만 저장됩니다.</p>
+        <div>
+          <div class="q-body" style="margin-top:8px">
+            <textarea id="aiPurpose" rows="2" placeholder="설문 목적 (예: 위험성평가 실무 교육 수료자의 만족도와 현업 적용 정도를 파악)"></textarea>
+            <div class="row">
+              <input type="text" id="aiAudience" placeholder="대상 (예: 제조업 안전관리자, 교육 수료자)" style="flex:1;min-width:200px">
+              <label>문항 수 <select id="aiCount"><option>5</option><option>8</option><option selected>10</option><option>12</option><option>15</option><option>20</option></select></label>
+            </div>
+            <input type="text" id="aiNotes" placeholder="요청 사항 (선택. 예: 5점 척도 위주, 마지막에 자유 의견 1문항)">
+            <div class="row">
+              <button class="btn" id="aiDraftBtn" disabled>초안 만들기</button>
+              <label class="chk"><input type="checkbox" id="aiReplace" checked> 기본 문항을 지우고 새로 만들기</label>
+              <span class="muted" id="aiDraftMsg"></span>
+            </div>
+            <pre class="ai-log" id="aiDraftLog" style="display:none"></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px">설문 기본 정보</h3>
+        <div class="q-body">
+          <input type="text" id="sTitle" placeholder="설문 제목">
+          <textarea id="sDesc" rows="2" placeholder="설문 설명 (첫 화면과 응답 화면 위에 표시)"></textarea>
+          <div class="row">
+            <label>마감일 <input type="date" id="sDeadline"></label>
+            <label class="chk"><input type="checkbox" id="sClose"> 마감일 이후 제출 막기</label>
+            <label class="chk" title="켜면 [공개]: 설문 안내 페이지·QR 코드로 누구나 응답할 수 있음. 끄면 [메일 전용]: 메일로 보낸 개인 링크로만 응답"><input type="checkbox" id="sOpen"> 공개 응답 허용 <span class="muted">(켜면 [공개], 끄면 [메일 전용] — 제목 앞에 표시됨)</span></label>
+          </div>
+          <div class="row">
+            <span class="muted">설문 ID: <code id="sId">(저장하면 만들어집니다)</code></span>
+            <span class="muted" id="sStatus"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h3 style="margin:0">문항</h3>
+          <span class="muted" id="qCount"></span>
+        </div>
+        <div id="qList"></div>
+        <div class="addbar">
+          <span class="muted" style="align-self:center">문항 추가:</span>
+          <button class="btn sm sec" data-add="single">객관식</button>
+          <button class="btn sm sec" data-add="multi">체크박스</button>
+          <button class="btn sm sec" data-add="dropdown">드롭다운</button>
+          <button class="btn sm sec" data-add="scale">선형 배율</button>
+          <button class="btn sm sec" data-add="rating">등급(별점)</button>
+          <button class="btn sm sec" data-add="short">단답형</button>
+          <button class="btn sm sec" data-add="long">장문형</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h3 style="margin:0">AI 문항 검토</h3>
+          <span class="muted" id="aiStatus2"></span>
+        </div>
+        <p class="muted" style="margin:4px 0 8px">문항을 어느 정도 만든 뒤 누르세요. 이중 질문, 유도 표현, 모호한 용어, 선택지 누락·중복, 필수 여부, 문항 순서를 점검하고 고친 문구를 제안합니다. 문항을 바꾸거나 저장·되돌리기를 하면 검토 결과는 지워집니다.</p>
+        <div class="row">
+          <button class="btn sec" id="aiReviewBtn" disabled>AI 문항 검토</button>
+          <span class="muted" id="aiReviewMsg"></span>
+        </div>
+        <pre class="ai-log" id="aiReviewLog" style="display:none"></pre>
+        <div id="aiReview" style="margin-top:8px"></div>
+      </div>
+
+      <!-- 저장 버튼: 문항 검토와 불러오기 사이에 단독으로 -->
+      <div style="text-align:center;margin:4px 0 16px"><button class="btn" id="saveBtn" style="padding:12px 40px;font-size:15px;font-weight:600">저장하고 적용</button></div>
+
+      <div class="card">
+        <h3 style="margin:0 0 6px">불러오기</h3>
+        <p class="muted" style="margin:0 0 8px" id="loadHint"></p>
+        <div class="row">
+          <label class="btn sec">PDF 설문지에서 불러오기 <input type="file" id="pdfFile" accept="application/pdf" hidden></label>
+          <label class="btn sec">저장해 둔 파일(JSON)에서 불러오기 <input type="file" id="jsonFile" accept=".json,application/json" hidden></label>
+        </div>
+        <p class="muted" style="margin:8px 0 4px">PDF는 AI가 먼저 읽어 문항·선택지·척도를 추출하고(스캔 이미지 PDF 가능), AI를 쓸 수 없으면 "1. 문항" 번호와 "① / 1) / 가." 표시를 찾는 규칙 방식으로 읽습니다. 가져온 문항에는 노란 표시가 붙습니다.</p>
+        <div id="pdfLog"></div>
+
+        <h3 style="margin:16px 0 6px">파일로 내보내기</h3>
+        <p class="muted" style="margin:0 0 8px">DB 저장은 바로 위의 <b>저장하고 적용</b> 버튼 하나로만 합니다. 파일 내보내기는 백업하거나 다른 설문에 다시 불러올 때 씁니다.</p>
+        <div class="row">
+          <button class="btn sec" id="exportJson">파일(JSON)로 내보내기</button>
+        </div>
+
+        <h3 style="margin:16px 0 6px">되돌리기</h3>
+        <div class="row">
+          <button class="btn sec" id="reloadBtn">마지막 저장 상태로 되돌리기</button>
+          <button class="btn sec" id="resetFile">기본 설문으로 되돌리기</button>
+        </div>
+        <p class="muted" style="margin:8px 0 0" id="revertHint"></p>
+      </div>
+    </div>
+
+    <div>
+      <div class="card preview">
+        <div class="row" style="justify-content:space-between">
+          <h3 style="margin:0">미리 보기</h3>
+          <a class="btn sm sec" id="openSurveyLink" href="survey.html" target="_blank">응답 화면 열기</a>
+        </div>
+        <p class="muted">저장한 뒤에 응답 화면과 관리 통계에 반영됩니다.</p>
+        <div id="preview"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="firebase-config.js"></script>
+<script src="survey-config.js"></script>
+<script src="ui-modal.js"></script>
+<script src="survey-store.js"></script>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  /* ---------- 로그인 상태 (admin.html과 같은 세션) ---------- 로그인 창은 설문 안내 페이지에 있으며, 로그인하지 않았으면 그곳으로 보냅니다 */
+
+  /* ---------- 상태 ---------- */
+  let db = null, store = null, model = null, dirty = false, currentId = null, surveys = [];
+  const newId = () => 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  // 편집기가 다루는 설문 필드. 그 밖의 값(만든 시각, AI 결과, 강제 마감 이력 등)은 관리 화면 몫이라 여기서 읽거나 쓰지 않음
+  const EDIT_FIELDS = ['title', 'description', 'deadline', 'closeAfterDeadline', 'openEnabled', 'questions'];
+  // 아무 객체에서 편집 필드만 뽑아 형식을 맞춤(문자열은 문자열로, 문항은 normalizeSurvey로). status는 따로 넘김
+  function editable(src, status) {
+    const m = {}; src = src || {};
+    for (const k of EDIT_FIELDS) if (src[k] !== undefined) m[k] = JSON.parse(JSON.stringify(src[k]));
+    m.title = String(m.title ?? ''); m.description = String(m.description ?? ''); m.deadline = String(m.deadline ?? '');
+    m.closeAfterDeadline = !!m.closeAfterDeadline; m.openEnabled = m.openEnabled !== false;
+    m.questions = normalizeSurvey({ questions: Array.isArray(m.questions) ? m.questions : [] }).questions.map(q => {
+      q.title = String(q.title ?? ''); q.description = String(q.description ?? ''); q.required = !!q.required;
+      if (q.options) q.options = q.options.map(o => String(o ?? ''));
+      if (q.labels) q.labels = q.labels.map(x => String(x ?? ''));
+      if (!q.id) q.id = newId();
+      return q;
+    });
+    m.status = status || src.status || 'active';
+    return m;
+  }
+  const TEMPLATE = editable(SURVEY, 'active'); TEMPLATE.deadline = '';   // survey-config.js의 SURVEY는 기본 문항 틀로만 씀(마감일·ID는 물려받지 않음)
+  const freshModel = () => { const m = editable(TEMPLATE, 'active'); m.title = ''; return m; };
+  const setStatus = (t, cls) => { $('status').textContent = t; $('status').className = 'status ' + (cls || ''); };
+  const markDirty = () => { dirty = true; setStatus('저장되지 않은 변경 사항이 있습니다', 'bad'); };
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  async function start() {
+    $('editorView').style.display = '';
+    if (firebaseConfigured()) {
+      try { firebase.initializeApp(FIREBASE_CONFIG); db = firebase.firestore(); } catch (e) { console.warn(e); }
+    }
+    initAi();
+    if (!db) { $('noDbHint').style.display = ''; model = freshModel(); renderAll(); return; }
+    store = SurveyStore.init(db);
+    const want = new URLSearchParams(location.search).get('s');
+    try {
+      await refreshList();
+      let last = null; try { last = localStorage.getItem('adminSurvey'); } catch (_) {}
+      if (want && want !== 'new') await openSurvey(want);
+      else if (want === 'new' || !surveys.length) startNew();
+      else await openSurvey(last && surveys.some(x => x.id === last) ? last : surveys[0].id);
+    } catch (err) { setStatus('불러오기 실패: ' + err.message, 'bad'); await Modal.alert('설문 목록을 읽지 못했습니다: ' + err.message + '\n(Firestore 규칙과 네트워크를 확인하세요)'); }
+  }
+  // 응답 건수만 셈(문서를 내려받지 않는 집계 조회, 지원하지 않으면 전체 읽기)
+  async function responseCount(id) {
+    const col = store.responses(id);
+    try { return (await col.count().get()).data().count; } catch (_) { return (await col.get()).size; }
+  }
+  async function refreshList() {
+    surveys = await store.list(true);
+    $('surveySel').innerHTML = surveys.map(x => `<option value="${esc(x.id)}">${x.openEnabled === false ? '[메일 전용]' : '[공개]'} ${esc(x.title || '(제목 없음)')}${x.status === 'archived' ? ' [보관]' : ''}</option>`).join('') + '<option value="__new">+ 새 설문</option>';
+    $('surveySel').value = currentId || '__new';
+  }
+  async function openSurvey(id) {
+    if (dirty && !await Modal.confirm('저장하지 않은 변경 사항이 있습니다. 버리고 다른 설문을 열까요?')) { $('surveySel').value = currentId || '__new'; return; }
+    let s;
+    try { s = await store.get(id); } catch (err) { setStatus('불러오기 실패', 'bad'); return Modal.alert('설문을 읽지 못했습니다: ' + err.message); }
+    if (!s) { await Modal.alert('설문을 찾을 수 없습니다.'); dirty = false; return startNew(); }
+    currentId = id; model = editable(s); dirty = false; clearAiPanels();
+    try { localStorage.setItem('adminSurvey', id); } catch (_) {}
+    history.replaceState(null, '', 'editor.html?s=' + encodeURIComponent(id));
+    setStatus('불러왔습니다', 'ok'); $('surveySel').value = id; renderAll();
+    try { const n = await responseCount(id); if (n && model.status !== 'archived' && currentId === id) $('sStatus').textContent = `상태: 진행 중 · 응답 ${n}건 있음 (문항을 삭제하거나 유형·선택지·척도를 바꾸면 저장할 때 확인을 묻습니다)`; } catch (_) {}
+  }
+  async function startNew() {
+    if (dirty && !await Modal.confirm('저장하지 않은 변경 사항이 있습니다. 버리고 새 설문을 시작할까요?')) { $('surveySel').value = currentId || '__new'; return; }
+    currentId = null; model = freshModel(); dirty = false; clearAiPanels();
+    history.replaceState(null, '', 'editor.html?s=new');
+    setStatus('새 설문입니다. 제목과 문항을 채우고 저장하세요', ''); $('surveySel').value = '__new'; renderAll();
+  }
+  $('surveySel').onchange = e => { (e.target.value === '__new' ? startNew() : openSurvey(e.target.value)).catch(err => Modal.alert('열기 실패: ' + err.message)); };
+  $('newBtn').onclick = startNew;
+  // 복제: 지금 연 설문의 문항·설정만 새 설문으로 (대상자·응답·AI 결과는 복사하지 않음)
+  $('dupBtn').onclick = async () => {
+    if (!currentId) return Modal.alert('저장한 설문을 연 상태에서만 복제할 수 있습니다. 새 설문은 먼저 저장하세요.');
+    if (dirty && !await Modal.confirm('저장하지 않은 변경 사항이 있습니다. 저장된 내용 기준으로 복제할까요?')) return;
+    const t = await Modal.prompt('복제할 설문의 제목', (model.title || '') + ' (복사본)'); if (t === null) return;
+    try {
+      const id = await store.duplicate(currentId, t.trim() || undefined);
+      dirty = false; await refreshList(); await openSurvey(id);
+      setStatus('복제했습니다. 대상자·응답은 비어 있는 새 설문입니다', 'ok');
+    } catch (err) { await Modal.alert('복제 실패: ' + err.message); }
+  };
+
+  /* ---------- 기본 정보 ---------- */
+  function renderMeta() {
+    $('sTitle').value = model.title || ''; $('sDesc').value = model.description || '';
+    $('sDeadline').value = model.deadline || ''; $('sClose').checked = !!model.closeAfterDeadline;
+    $('sOpen').checked = model.openEnabled !== false;
+    $('sId').textContent = currentId || '(저장하면 만들어집니다)';
+    $('sStatus').textContent = currentId ? (model.status === 'archived' ? '상태: 보관됨(응답 받지 않음)' : '상태: 진행 중') : '';
+    $('openSurveyLink').href = currentId ? 'survey.html?s=' + encodeURIComponent(currentId) : 'survey.html';
+  }
+  $('sTitle').oninput = e => { model.title = e.target.value; markDirty(); renderPreview(); };
+  $('sDesc').oninput = e => { model.description = e.target.value; markDirty(); renderPreview(); };
+  $('sDeadline').onchange = e => { model.deadline = e.target.value; markDirty(); renderPreview(); };
+  $('sClose').onchange = e => { model.closeAfterDeadline = e.target.checked; markDirty(); };
+  $('sOpen').onchange = e => { model.openEnabled = e.target.checked; markDirty(); };
+
+  /* ---------- 문항 편집 ---------- */
+  function blankQuestion(type) {
+    const q = { id: newId(), type, title: '', description: '', required: false };
+    if (type === 'single' || type === 'multi' || type === 'dropdown') { q.options = ['옵션 1', '옵션 2']; q.allowOther = false; }
+    if (type === 'scale') { q.min = 1; q.max = 5; q.labels = ['', '']; }
+    if (type === 'rating') { q.max = 5; q.icon = 'star'; }
+    if (type === 'short' || type === 'long') q.placeholder = '';
+    return q;
+  }
+  function changeType(q, type) {
+    const keep = { id: q.id, title: q.title, description: q.description, required: q.required, ...(q.draft ? { draft: true } : {}) };
+    const n = blankQuestion(type);
+    if (n.options && Array.isArray(q.options) && q.options.length) { n.options = q.options.slice(); n.allowOther = !!q.allowOther; }
+    if (type === 'scale' && q.type === 'rating') n.max = q.max;
+    if (type === 'rating' && q.type === 'scale') n.max = Math.min(Math.max(q.max, 3), 10);
+    Object.assign(q, n, keep);
+    for (const k of Object.keys(q)) if (!(k in n) && !(k in keep)) delete q[k];
+  }
+
+  let reviewSig = '';
+  function renderQuestions() {
+    const sig = model.questions.map(q => q.id + ':' + q.type).join('|');
+    if (reviewSig && sig !== reviewSig && $('aiReview').innerHTML) { $('aiReview').innerHTML = ''; $('aiReviewMsg').textContent = '문항이 바뀌어 검토 결과를 지웠습니다. 다시 검토하세요.'; }
+    reviewSig = sig;
+    const list = $('qList');
+    // 유형과 맞지 않는 값 정리: 선택지 유형이 아닌데 options가 남아 있으면 지움(그렇지 않으면 아래에서 선택지 편집란이 대신 그려짐)
+    model.questions.forEach(q => { if (!(q.type === 'single' || q.type === 'multi' || q.type === 'dropdown') && q.options) delete q.options; if (q.type === 'scale') { q.labels = Array.isArray(q.labels) ? q.labels.slice(0, 2) : ['', '']; while (q.labels.length < 2) q.labels.push(''); q.min = Number(q.min ?? 1); q.max = Number(q.max ?? 5); } });
+    list.innerHTML = model.questions.map((q, i) => {
+      let body = '';
+      if ((q.type === 'single' || q.type === 'multi' || q.type === 'dropdown') && q.options) {
+        body += '<div>' + q.options.map((o, j) =>
+          `<div class="opt-row"><span class="muted">${q.type === 'multi' ? '☐' : q.type === 'dropdown' ? (j + 1) + '.' : '○'}</span><input type="text" data-opt="${j}" value="${esc(o)}" placeholder="옵션 ${j + 1}"><button class="btn icon" data-delopt="${j}" title="옵션 삭제">✕</button></div>`).join('') + `</div>
+          <div class="row"><button class="btn sm sec" data-addopt>옵션 추가</button>${q.type !== 'dropdown' ? `<label class="chk"><input type="checkbox" data-other ${q.allowOther ? 'checked' : ''}> "기타" 직접 입력 칸 추가</label>` : ''}</div>`;
+      } else if (q.type === 'scale') {
+        body += `<div class="row"><label>최솟값 <select data-min>${[0, 1].map(v => `<option${v === q.min ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+          <label>최댓값 <select data-max>${[2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option${v === q.max ? ' selected' : ''}>${v}</option>`).join('')}</select></label></div>
+          <div class="row"><input type="text" data-label="0" value="${esc(q.labels[0])}" placeholder="${q.min}점 설명 (예: 매우 불만족)" style="width:48%"><input type="text" data-label="1" value="${esc(q.labels[1])}" placeholder="${q.max}점 설명 (예: 매우 만족)" style="width:48%"></div>`;
+      } else if (q.type === 'rating') {
+        body += `<div class="row"><label>단계 <select data-max>${[3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option${v === q.max ? ' selected' : ''}>${v}</option>`).join('')}</select></label>
+          <label>모양 <select data-icon>${[['star', '별 ★'], ['heart', '하트 ♥'], ['number', '숫자']].map(([v, n]) => `<option value="${v}"${v === q.icon ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div>`;
+      } else {
+        body += `<input type="text" data-ph value="${esc(q.placeholder || '')}" placeholder="입력 칸 안내 문구 (선택)">`;
+      }
+      return `<div class="q-card${q.draft ? ' draft' : ''}" data-i="${i}">
+        <div class="q-head"><span class="num">${i + 1}.</span>
+          <select data-type>${Object.entries(SURVEY_TYPES).map(([k, v]) => `<option value="${k}"${k === q.type ? ' selected' : ''}>${v.name}</option>`).join('')}</select>
+          ${q.draft ? '<span class="tag">PDF에서 가져옴 · 확인 필요</span>' : ''}
+        </div>
+        <div class="q-body">
+          <input type="text" data-title value="${esc(q.title)}" placeholder="질문">
+          <input type="text" data-desc value="${esc(q.description || '')}" placeholder="설명 (선택)">
+          ${body}
+        </div>
+        <div class="q-foot">
+          <label class="chk"><input type="checkbox" data-req ${q.required ? 'checked' : ''}> 필수</label>
+          <div class="tools">
+            <button class="btn icon" data-move="-1" title="위로">▲</button><button class="btn icon" data-move="1" title="아래로">▼</button>
+            <button class="btn icon" data-dup title="복제">복제</button><button class="btn icon" data-del title="삭제" style="color:#d33">삭제</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('') || '<p class="muted">문항이 없습니다. 아래에서 문항을 추가하세요.</p>';
+    $('qCount').textContent = `${model.questions.length}문항 (필수 ${model.questions.filter(q => q.required).length})`;
+  }
+
+  // 문항 카드 안의 모든 변경을 한곳에서 처리
+  $('qList').addEventListener('input', e => {
+    const card = e.target.closest('.q-card'); if (!card) return;
+    const q = model.questions[+card.dataset.i], t = e.target;
+    if (t.dataset.title !== undefined) q.title = t.value;
+    else if (t.dataset.desc !== undefined) q.description = t.value;
+    else if (t.dataset.opt !== undefined) q.options[+t.dataset.opt] = t.value;
+    else if (t.dataset.label !== undefined) q.labels[+t.dataset.label] = t.value;
+    else if (t.dataset.ph !== undefined) q.placeholder = t.value;
+    else return;
+    if (q.draft) { delete q.draft; card.classList.remove('draft'); card.querySelector('.tag')?.remove(); }
+    markDirty(); renderPreview();
+  });
+  $('qList').addEventListener('change', e => {
+    const card = e.target.closest('.q-card'); if (!card) return;
+    const i = +card.dataset.i, q = model.questions[i], t = e.target;
+    if (t.dataset.type !== undefined) { changeType(q, t.value); renderQuestions(); }
+    else if (t.dataset.req !== undefined) q.required = t.checked;
+    else if (t.dataset.other !== undefined) q.allowOther = t.checked;
+    else if (t.dataset.min !== undefined) q.min = +t.value;
+    else if (t.dataset.max !== undefined) q.max = +t.value;
+    else if (t.dataset.icon !== undefined) q.icon = t.value;
+    else return;
+    markDirty(); renderPreview();
+  });
+  $('qList').addEventListener('click', async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const card = b.closest('.q-card'); if (!card) return;
+    const i = +card.dataset.i, q = model.questions[i];
+    if (b.dataset.addopt !== undefined) q.options.push('옵션 ' + (q.options.length + 1));
+    else if (b.dataset.delopt !== undefined) { if (q.options.length > 1) q.options.splice(+b.dataset.delopt, 1); }
+    else if (b.dataset.move !== undefined) { const j = i + (+b.dataset.move); if (j < 0 || j >= model.questions.length) return; [model.questions[i], model.questions[j]] = [model.questions[j], model.questions[i]]; }
+    else if (b.dataset.dup !== undefined) { const c = JSON.parse(JSON.stringify(q)); c.id = newId(); model.questions.splice(i + 1, 0, c); }
+    else if (b.dataset.del !== undefined) { if (!await Modal.confirm(`${i + 1}번 문항을 삭제할까요?`)) return; model.questions.splice(i, 1); }
+    else return;
+    markDirty(); renderQuestions(); renderPreview();
+  });
+  document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { model.questions.push(blankQuestion(b.dataset.add)); markDirty(); renderQuestions(); renderPreview(); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); });
+
+  /* ---------- 미리 보기 ---------- */
+  function renderPreview() {
+    const s = model;
+    const meta = [s.deadline ? '응답 마감: ' + s.deadline : '', s.questions.length + '문항'].filter(Boolean).join(' · ');
+    $('preview').innerHTML = `<div class="p-card"><h2 style="margin:0 0 6px;color:var(--c);font-size:20px">${esc(s.title || '(제목 없음)')}</h2><p class="muted">${esc(s.description || '')}</p><p class="muted">${meta}</p></div>` +
+      s.questions.map((q, i) => {
+        let body = '';
+        if (q.type === 'single' || q.type === 'multi') {
+          body = q.options.map(o => `<div class="p-opt"><input type="${q.type === 'single' ? 'radio' : 'checkbox'}" disabled> ${esc(o)}</div>`).join('') + (q.allowOther ? `<div class="p-opt"><input type="${q.type === 'single' ? 'radio' : 'checkbox'}" disabled> 기타: <input type="text" disabled style="width:50%"></div>` : '');
+        } else if (q.type === 'dropdown') body = `<select disabled><option>선택하세요</option>${q.options.map(o => `<option>${esc(o)}</option>`).join('')}</select>`;
+        else if (q.type === 'scale') { let sp = ''; for (let v = q.min; v <= q.max; v++) sp += `<span>${v}</span>`; body = `<div class="p-scale">${sp}</div><div class="p-labels"><span>${esc(q.labels[0])}</span><span>${esc(q.labels[1])}</span></div>`; }
+        else if (q.type === 'rating') body = `<div class="stars">${(q.icon === 'heart' ? '♡' : q.icon === 'number' ? '' : '☆').repeat(q.icon === 'number' ? 0 : q.max)}${q.icon === 'number' ? Array.from({ length: q.max }, (_, k) => `<span style="font-size:15px;border:1px solid var(--line);border-radius:6px;padding:4px 10px;margin-right:4px;color:#444">${k + 1}</span>`).join('') : ''}</div>`;
+        else if (q.type === 'short') body = `<input type="text" disabled placeholder="${esc(q.placeholder || '단답형 답변')}">`;
+        else body = `<textarea disabled rows="3" placeholder="${esc(q.placeholder || '장문형 답변')}"></textarea>`;
+        return `<div class="p-card"><p class="p-title">${i + 1}. ${esc(q.title || '(질문 없음)')}${q.required ? '<span class="req">*</span>' : ''}</p>${q.description ? `<p class="muted" style="margin:-4px 0 8px">${esc(q.description)}</p>` : ''}${body}</div>`;
+      }).join('');
+  }
+  function renderAll() { renderMeta(); renderQuestions(); renderPreview(); renderMode(); }
+  // 새 설문 / 기존 설문에 따라 보이는 카드와 버튼이 다름
+  function renderMode() {
+    const isNew = !currentId;
+    $('aiCard').style.display = isNew ? '' : 'none';                 // AI 초안은 새 설문에서만
+    $('reloadBtn').style.display = isNew ? 'none' : '';              // 저장한 적 없는 새 설문에는 "마지막 저장 상태" 없음
+    $('loadHint').innerHTML = isNew ? '기존 설문지(PDF)나 저장해 둔 파일(JSON)로 새 설문을 시작합니다. 가져온 뒤 내용을 확인하고 <b>저장하고 적용</b>을 눌러야 저장됩니다.'
+      : '파일을 가져오면 <b>이 설문의 문항이 파일 내용으로 바뀝니다</b>(응답이 있는 진행 중 설문이면 저장할 때 확인을 묻습니다). 다른 설문으로 쓰려면 먼저 "새 설문"을 누르세요.';
+    $('revertHint').innerHTML = isNew ? '"기본 설문"은 새 설문을 만들 때 나오는 기본 문항입니다. 되돌린 뒤에도 <b>저장하고 적용</b>을 눌러야 저장됩니다.'
+      : '"마지막 저장 상태"는 DB에 저장된 내용이고, "기본 설문"은 새 설문을 만들 때 나오는 기본 문항입니다. 되돌린 뒤에도 <b>저장하고 적용</b>을 눌러야 반영됩니다.';
+  }
+  // AI 초안·검토 메시지와 결과, PDF 불러오기 로그를 모두 지움 (설문 전환·저장·되돌리기·불러오기 때)
+  function clearAiPanels() {
+    ['aiDraftMsg', 'aiReviewMsg', 'aiReview', 'pdfLog'].forEach(id => { const el = $(id); if (el) el.innerHTML = ''; });
+    ['aiDraftLog', 'aiReviewLog'].forEach(logClear);
+  }
+
+  /* ---------- 저장 · 내보내기 · 가져오기 ---------- */
+  function validate() {
+    const errs = [];
+    if (!String(model.title || '').trim()) errs.push('설문 제목을 입력하세요.');
+    model.questions.forEach((q, i) => {
+      if (!String(q.title || '').trim()) errs.push(`${i + 1}번 문항의 질문이 비어 있습니다.`);
+      if (q.options && q.options.filter(o => String(o).trim()).length < 1) errs.push(`${i + 1}번 문항에 선택지가 없습니다.`);
+      if (q.type === 'scale' && q.min >= q.max) errs.push(`${i + 1}번 문항의 척도 범위가 잘못되었습니다.`);
+    });
+    return errs;
+  }
+  // 저장·내보내기용 정리본: 편집 필드만, 문항의 편집용 표시(draft) 제거, 빈 선택지·공백 정리
+  function cleanModel() {
+    const m = editable(model, model.status);
+    m.questions.forEach(q => { delete q.draft; if (q.options) q.options = q.options.map(o => o.trim()).filter(Boolean); q.title = q.title.trim(); if (!q.description) delete q.description; });
+    return m;
+  }
+  // 진행 중인 설문의 문항 구조 변경 감지 — 기존 응답과 문항이 맞지 않게 되는 변경만 골라냅니다
+  // (제목·설명·필수 여부·문항 순서·문항 추가는 기존 응답에 영향이 없어 경고하지 않음)
+  function structuralChanges(before, after) {
+    const out = [], num = (arr, q) => arr.indexOf(q) + 1;
+    (before.questions || []).forEach(bq => {
+      const aq = (after.questions || []).find(q => q.id === bq.id);
+      const label = `${num(before.questions, bq)}번 문항(${(bq.title || '').slice(0, 20)})`;
+      if (!aq) return out.push(`${label} 삭제`);
+      if (aq.type !== bq.type) return out.push(`${label} 유형 변경: ${SURVEY_TYPES[bq.type].name} → ${SURVEY_TYPES[aq.type].name}`);
+      if (bq.options) {
+        const gone = bq.options.filter(o => !(aq.options || []).includes(o));
+        if (gone.length) out.push(`${label} 선택지 삭제·수정: ${gone.join(', ')}`);
+      }
+      if (bq.type === 'scale' && (Number(aq.min) !== Number(bq.min) || Number(aq.max) !== Number(bq.max))) out.push(`${label} 척도 범위 변경: ${bq.min}~${bq.max} → ${aq.min}~${aq.max}`);
+      if (bq.type === 'rating' && Number(aq.max) !== Number(bq.max)) out.push(`${label} 별점 개수 변경: ${bq.max} → ${aq.max}`);
+      if (bq.allowOther && !aq.allowOther) out.push(`${label} 기타 직접 입력 해제`);
+    });
+    return out;
+  }
+  // 진행 중이고 응답이 있는 설문이면 저장 전에 확인을 받습니다. false를 돌려주면 저장 취소
+  async function confirmLiveChange(after) {
+    const saved = await store.get(currentId); if (!saved || saved.status === 'archived') return true;
+    const n = await responseCount(currentId); if (!n) return true;
+    const changes = structuralChanges(saved, after); if (!changes.length) return true;
+    return Modal.confirm(`이 설문은 진행 중이며 이미 응답 ${n}건이 들어와 있습니다.\n아래 변경은 기존 응답과 문항이 맞지 않게 되어, 통계에서 빠지거나 다른 답으로 집계될 수 있습니다.\n\n- ${changes.join('\n- ')}\n\n권장: 이 설문은 그대로 두고 이 화면 위쪽의 "복제" 버튼으로 새 설문을 만들어 진행하세요.\n그래도 지금 설문에 저장할까요?`);
+  }
+  $('saveBtn').onclick = async () => {
+    const errs = validate(); if (errs.length) return await Modal.alert(errs.join('\n'));
+    if (!db) return await Modal.alert('Firebase가 설정되지 않아 저장할 수 없습니다. firebase-config.js를 먼저 설정하세요.');
+    $('saveBtn').disabled = true;
+    try {
+      const after = cleanModel();
+      if (currentId && !await confirmLiveChange(after)) { setStatus('저장을 취소했습니다', ''); return; }
+      if (currentId) await store.save(currentId, after);
+      else { currentId = await store.create(after); try { localStorage.setItem('adminSurvey', currentId); } catch (_) {} history.replaceState(null, '', 'editor.html?s=' + encodeURIComponent(currentId)); }
+      model = after;   // 화면의 문항도 저장된 정리본과 같게(노란 "확인 필요" 표시 제거, 공백 정리 반영)
+      dirty = false; clearAiPanels(); await refreshList(); renderAll();
+      setStatus('저장되었습니다 (' + hhmmss() + ')', 'ok');
+    } catch (err) { await Modal.alert('저장 실패: ' + err.message); }
+    finally { $('saveBtn').disabled = false; }
+  };
+  // JSON 내보내기: 편집 필드만(문항·기본 정보). BOM 없이 저장해 다른 도구에서도 바로 읽힘
+  $('exportJson').onclick = () => { const m = cleanModel(); delete m.status; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(m, null, 2)], { type: 'application/json' })); a.download = (model.title || '설문').replace(/[\\/:*?"<>|]/g, '_') + '.json'; a.click(); URL.revokeObjectURL(a.href); };
+  $('reloadBtn').onclick = async () => {
+    if (!currentId) return await Modal.alert('아직 저장한 적이 없는 새 설문입니다.');
+    if (!await Modal.confirm('저장하지 않은 변경 사항을 버리고 마지막으로 저장한 상태로 되돌릴까요?')) return;
+    dirty = false; clearAiPanels(); await openSurvey(currentId);
+  };
+  $('jsonFile').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const obj = JSON.parse(await f.text());
+      if (!obj || typeof obj !== 'object' || !Array.isArray(obj.questions)) throw new Error('questions 배열이 없습니다.');
+      clearAiPanels();
+      // 파일의 문항·기본 정보만 가져오고, 지금 연 설문의 상태(보관 여부)와 ID는 그대로 둠
+      model = editable({ ...obj, title: obj.title || model.title }, model.status); markDirty(); renderAll();
+      $('pdfLog').textContent = `"${f.name}"에서 문항 ${model.questions.length}개를 불러왔습니다. 확인 후 저장하고 적용을 누르세요.\n`;
+    }
+    catch (err) { await Modal.alert('JSON을 읽지 못했습니다: ' + err.message); }
+    e.target.value = '';
+  };
+  $('resetFile').onclick = async () => { if (!await Modal.confirm('편집 중인 문항을 모두 버리고 기본 설문으로 되돌릴까요? (저장하고 적용을 눌러야 반영됩니다)')) return; const keep = { title: model.title || TEMPLATE.title, status: model.status }; model = editable({ ...TEMPLATE, ...keep }, keep.status); clearAiPanels(); markDirty(); renderAll(); };
+
+  /* ---------- PDF 불러오기 ---------- */
+  const pdfLog = t => { $('pdfLog').textContent += t + '\n'; };
+  async function extractLines(file) {
+    if (!window.pdfjsLib) throw new Error('PDF 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const lines = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      const rows = new Map(); // y 좌표(반올림)별로 글자 조각 묶기
+      for (const it of tc.items) {
+        if (!it.str || !it.str.trim()) continue;
+        const y = Math.round(it.transform[5] / 3) * 3, x = it.transform[4];
+        if (!rows.has(y)) rows.set(y, []);
+        rows.get(y).push({ x, s: it.str, h: it.height || 0, w: it.width || 0 });
+      }
+      [...rows.entries()].sort((a, b) => b[0] - a[0]).forEach(([, parts]) => {
+        parts.sort((a, b) => a.x - b.x);
+        // 글자 조각 사이의 간격이 글자 크기의 1/4보다 크면 띄어쓰기, 글자 2개 이상 벌어지면 두 칸(척도 양 끝 설명 구분용)
+        let text = '', lastEnd = null;
+        parts.forEach(pt => {
+          const h = pt.h || 10, gap = lastEnd === null ? 0 : pt.x - lastEnd;
+          text += (lastEnd !== null ? (gap > h * 2 ? '  ' : gap > h * 0.12 ? ' ' : '') : '') + pt.s;
+          lastEnd = pt.x + (pt.w || pt.s.length * h * 0.5);
+        });
+        lines.push({ text: text.replace(/[ \t]{3,}/g, '  ').trim(), h: Math.max(...parts.map(pt => pt.h)), page: p });
+      });
+    }
+    return lines;
+  }
+  const RX_Q = /^(?:문\s*(\d{1,3})|Q\s*(\d{1,3})|(\d{1,3}))\s*[.)、:]\s*(.+)$/i;
+  const RX_OPT = /^(?:([①-⑳])|([⑴-⒇])|\(?(\d{1,2})\)|([a-hA-H])[.)]|([가나다라마바사아자차카타파하])[.)]|([○□◯▢◻▪•·\-–]))\s*(.+)$/;
+  const RX_SCALE_NUM = /^(?:[①-⑳]|\d)(?:\s+(?:[①-⑳]|\d)){2,9}$/;
+  const RX_SCALE_WORDS = /(매우\s*(그렇다|만족|불만족|그렇지\s*않다|아니다)|전혀|보통)/;
+  function splitInlineOptions(text) {
+    // "① 예 ② 아니오 ③ 모름" 처럼 한 줄에 여러 선택지가 있는 경우
+    const parts = text.split(/(?=[①-⑳])|(?=\s\(?\d\)\s)|(?=\s[가-하][.)]\s)/).map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 2 && parts.every(p => RX_OPT.test(p))) return parts.map(p => p.replace(RX_OPT, '$7').trim());
+    return null;
+  }
+  function pdfToQuestions(lines) {
+    const qs = []; let cur = null, title = '';
+    const big = lines.filter(l => l.page === 1).sort((a, b) => b.h - a.h)[0];
+    if (big) title = big.text;
+    const circled = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+    const numOf = s => circled.indexOf(s) >= 0 ? circled.indexOf(s) + 1 : parseInt(s, 10);
+    const finalize = q => {
+      if (q.scaleHint && q.options.length < 2) { q.type = 'scale'; q.min = q.scaleHint.min; q.max = q.scaleHint.max; q.labels = q.scaleHint.labels; delete q.options; }
+      else if (q.options.length >= 2) {
+        q.type = /모두|복수|여러\s*개/.test(q.title) ? 'multi' : 'single';
+        const etc = q.options.findIndex(o => /^기타/.test(o) && o.length <= 10);
+        if (etc >= 0) { q.allowOther = true; q.options.splice(etc, 1); }
+        if (q.options.length < 2) q.options.push('옵션');
+      } else { q.type = q.longHint ? 'long' : 'short'; delete q.options; q.placeholder = ''; }
+      delete q.scaleHint; delete q.longHint;
+    };
+    const flush = () => { if (cur) { finalize(cur); qs.push(cur); cur = null; } };
+    for (const l of lines) {
+      const t = l.text;
+      if (t === title) continue;
+      const mq = t.match(RX_Q);
+      if (mq) {
+        const n = parseInt(mq[1] || mq[2] || mq[3], 10), expectedQ = qs.length + (cur ? 1 : 0) + 1;
+        // "1) 예" 처럼 번호가 선택지 순번과 이어지면 문항이 아니라 선택지로 봅니다.
+        const looksOption = cur && !cur.scaleHint && n === cur.options.length + 1 && n !== expectedQ;
+        if (!looksOption) {
+          flush();
+          cur = { id: newId(), type: 'short', title: mq[4].trim(), required: false, options: [], draft: true };
+          const inl = splitInlineOptions(mq[4]);
+          if (inl) { cur.title = mq[4].split(/[①⑴]|\(1\)|\s1\)|가[.)]/)[0].trim(); cur.options = inl; }
+          continue;
+        }
+      }
+      if (!cur) continue;
+      if (RX_SCALE_NUM.test(t)) { const nums = t.split(/\s+/).map(numOf); cur.scaleHint = { min: Math.min(...nums), max: Math.max(...nums), labels: cur.scaleHint?.labels || ['', ''] }; continue; }
+      if (RX_SCALE_WORDS.test(t) && t.length < 60 && !RX_OPT.test(t)) { const w = t.split(/\s{2,}|\s+[-~…]\s+/); cur.scaleHint = cur.scaleHint || { min: 1, max: 5, labels: ['', ''] }; cur.scaleHint.labels = [w[0] || '', w[w.length - 1] || '']; continue; }
+      const inline = splitInlineOptions(t);
+      if (inline) { cur.options.push(...inline); continue; }
+      const mo = t.match(RX_OPT);
+      if (mo) { cur.options.push(mo[7].trim()); continue; }
+      if (/^[_＿\-–—]{3,}$/.test(t) || /^\(\s*\)$/.test(t)) { cur.longHint = true; continue; }
+      if (t.length < 80 && cur.options.length === 0 && !cur.scaleHint) cur.title += ' ' + t; // 질문이 두 줄로 나뉜 경우
+    }
+    flush();
+    return { title, questions: qs };
+  }
+  /* ---------- AI 도우미 ---------- */
+  let aiOn = false;
+  async function initAi() {
+    const st = await AiClient.status();
+    aiOn = st.enabled;
+    $('aiStatus').innerHTML = aiOn ? '<span style="color:var(--ok)">사용 가능</span>' : '<span style="color:var(--bad)">미설정</span> <span class="muted">' + esc(st.error ? st.error + ' — 새 Code.gs를 붙여 넣고 "배포 관리 > 새 버전"으로 다시 배포했는지 확인하세요.' : 'Apps Script 스크립트 속성에 GEMINI_API_KEY를 넣고 새 버전으로 배포하세요.') + '</span>';
+    $('aiStatus2').innerHTML = $('aiStatus').innerHTML;
+    $('aiDraftBtn').disabled = $('aiReviewBtn').disabled = !aiOn;
+  }
+  // AI가 돌려준 문항을 편집기 형식으로 정리
+  function fromAiQuestions(list) {
+    return editable({ questions: (list || []).filter(q => q && typeof q === 'object') }).questions
+      .map(q => { q.id = newId(); q.draft = true; if (q.options) q.options = q.options.map(String); if (q.type === 'rating') q.max = Math.min(Math.max(q.max || 5, 3), 10); if (q.type === 'scale') { q.min = [0, 1].includes(q.min) ? q.min : 1; q.max = Math.min(Math.max(q.max || 5, 2), 10); q.labels = (q.labels || ['', '']).slice(0, 2).map(x => String(x || '').trim()); while (q.labels.length < 2) q.labels.push(''); if (!q.labels[0] || !q.labels[1]) { const g = guessLabels(q.title); q.labels = [q.labels[0] || g[0], q.labels[1] || g[1]]; } } return q; });
+  }
+  // 질문 문구에 맞는 선형 배율 양 끝 설명 추정 (AI가 비워 보내거나 규칙 점검에서 제안할 때 사용)
+  function guessLabels(title) {
+    const t = title || '';
+    if (/만족/.test(t)) return ['매우 불만족', '매우 만족'];
+    if (/도움|유용|효과|기여/.test(t)) return ['전혀 도움이 안 됨', '매우 도움이 됨'];
+    if (/추천|의향|가능성|참여할/.test(t)) return ['전혀 없음', '매우 높음'];
+    if (/이해|숙지|알고|파악/.test(t)) return ['전혀 이해하지 못함', '완전히 이해함'];
+    if (/난이도|어려|쉬/.test(t)) return ['매우 쉬움', '매우 어려움'];
+    if (/중요|필요/.test(t)) return ['전혀 중요하지 않음', '매우 중요함'];
+    if (/동의|생각|그렇|느끼/.test(t)) return ['전혀 그렇지 않다', '매우 그렇다'];
+    return ['매우 낮음', '매우 높음'];
+  }
+  // 진행 로그(두 줄 높이, 넘치면 스크롤) + 경과 시간 표시
+  const hhmmss = () => new Date().toLocaleTimeString('ko-KR', { hour12: false });
+  const LOGS = {};   // 로그 상자 id → 줄 목록
+  function log(id, msg) { const L = LOGS[id] = LOGS[id] || []; L.push(`[${hhmmss()}] ${msg}`); const el = $(id); el.textContent = L.join('\n'); el.style.display = ''; el.scrollTop = el.scrollHeight; }
+  function logClear(id) { LOGS[id] = []; const el = $(id); el.textContent = ''; el.style.display = 'none'; }
+  function timer(msgEl, label) { const t0 = Date.now(); const tick = () => { msgEl.textContent = `${label} · ${Math.round((Date.now() - t0) / 1000)}초 경과`; }; tick(); const h = setInterval(tick, 1000); return () => { clearInterval(h); return Math.round((Date.now() - t0) / 1000); }; }
+  // 서버(Code.gs ai19)가 "모든 모델이 쉬는 중"일 때 돌려주는 문장을 알아보고, 다시 쓸 수 있는 시각을 알림에 그대로 보여 줌
+  const isAiExhausted = err => /사용 가능한 AI 모델이 없습니다|모든 모델이 실패했습니다/.test(String((err && err.message) || err || ''));
+  const retryHint = err => { const m = String((err && err.message) || '').match(/약 ([^()]+?) 뒤\(한국 시간 (\d{2}:\d{2})\)/); return m ? `약 ${m[1]} 뒤(${m[2]})` : '잠시 뒤'; };
+  const aiFailText = (what, err) => isAiExhausted(err) ? `${what}: 지금은 사용 가능한 AI 모델이 없습니다(모든 모델이 한도 초과로 쉬는 중).\n${retryHint(err)} 다시 시도해 주세요.` : `${what}: ${AiClient.shortReason(err.message)}`;
+  const attemptsText = list => (list || []).map(a => a.note ? a.note : a.skipped ? `${a.model} 건너뜀(쿨다운)` : `${a.model} ${a.ok ? '성공' : (a.error || '실패').replace(/^HTTP /, '').slice(0, 40)} (${(a.ms / 1000).toFixed(1)}초${a.tokens ? `, 입력 ${(a.tokens.in || 0).toLocaleString('ko-KR')}·출력 ${(a.tokens.out || 0).toLocaleString('ko-KR')}·생각 ${(a.tokens.think || 0).toLocaleString('ko-KR')} 토큰` : ''})`).join(' → ');
+  const chainText = (st, kind) => (st && st.models && st.models[kind] ? st.models[kind].join(' → ') : '서버 설정 순서');
+  $('aiDraftBtn').onclick = async () => {
+    const purpose = $('aiPurpose').value.trim(); if (!purpose) return Modal.alert('설문 목적을 적어 주세요.');
+    $('aiDraftBtn').disabled = true;
+    const st = await AiClient.status(); const want = +$('aiCount').value;
+    logClear('aiDraftLog'); log('aiDraftLog', `초안 요청: 문항 ${want}개 · 목적 "${purpose.slice(0, 30)}" · 모델 순서 ${chainText(st, 'lite')}`);
+    const stop = timer($('aiDraftMsg'), '초안을 만드는 중');
+    try {
+      const { model: used, result, attempts } = await AiClient.run('draft', { purpose, audience: $('aiAudience').value.trim(), count: want, notes: $('aiNotes').value.trim() });
+      const sec = stop();
+      log('aiDraftLog', `응답 도착 · ${used} · ${sec}초 · 문항 ${(result.questions || []).length}개` + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : ''));
+      const qs = fromAiQuestions(result.questions);
+      if (!qs.length) throw new Error('문항이 만들어지지 않았습니다.');
+      const short = qs.length < want ? ` 요청한 ${want}개보다 적게(${qs.length}개) 만들어졌습니다 — 모델(${used})이 일부만 돌려준 경우이니 "초안 만들기"를 다시 눌러 보거나 요청 사항에 "문항 ${want}개"를 적어 주세요.` : '';
+      if ($('aiReplace').checked) model.questions = [];
+      if (!model.title.trim() && result.title) model.title = result.title;
+      if (!model.description && result.description) model.description = result.description;
+      model.questions.push(...qs);
+      $('aiDraftMsg').innerHTML = `<b style="color:var(--ok);font-size:14px">초안 완성</b> — 문항 ${qs.length}개 추가 (${esc(used)}). 노란 표시 문항을 확인하고 저장하세요.` + esc(short);
+      log('aiDraftLog', `문항 ${qs.length}개를 편집기에 넣었습니다: ` + qs.map(q => SURVEY_TYPES[q.type].name).join(', ') + (short ? ' — 요청보다 적음' : ''));
+      markDirty(); renderAll();
+    } catch (err) { stop(); $('aiDraftMsg').textContent = ''; log('aiDraftLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert(aiFailText('초안 생성 실패', err)); }
+    $('aiDraftBtn').disabled = false;
+  };
+  $('aiReviewBtn').onclick = async () => {
+    if (!model.questions.length) return Modal.alert('검토할 문항이 없습니다.');
+    $('aiReviewBtn').disabled = true; $('aiReview').innerHTML = '';
+    const st = await AiClient.status();
+    logClear('aiReviewLog'); log('aiReviewLog', `검토 요청: 문항 ${model.questions.length}개 · 모델 순서 ${chainText(st, 'lite')}`);
+    const stop = timer($('aiReviewMsg'), '검토 중');
+    try {
+      const { model: used, result: rawResult, attempts } = await AiClient.run('review', { title: model.title, questions: model.questions.map((q, i) => ({ index: i, type: q.type, title: q.title, description: q.description || '', required: !!q.required, options: q.options, allowOther: !!q.allowOther, min: q.min, max: q.max, labels: q.labels })) });
+      // 안전장치: 모델이 유형에 없는 속성을 지적하면(별점에 척도 설명, 주관식에 선택지 등) 그 지적을 버리고, fix에서도 그 유형에 없는 항목을 뺌
+      const result = (() => {
+        const r = rawResult || {}; const isChoice = t => t === 'single' || t === 'multi' || t === 'dropdown';
+        const dropped = [];
+        r.items = (r.items || []).filter(it => {
+          const q = model.questions[it.index]; if (!q) return true;
+          const txt = (it.issue || '') + ' ' + (it.suggestion || '');
+          const bad = (q.type !== 'scale' && /labels|양 끝|척도 설명|최저점|최고점|선형 배율/.test(txt))
+            || (!isChoice(q.type) && /선택지|options|상호배타|기타\s*\(/.test(txt) && !/척도|점/.test(txt) && q.type !== 'scale' && q.type !== 'rating');
+          if (bad) dropped.push(`${it.index + 1}번(${SURVEY_TYPES[q.type].name}) "${(it.issue || '').slice(0, 40)}"`);
+          if (!bad && it.fix) { const f = it.fix; if (q.type !== 'scale') { delete f.labels; delete f.min; } if (q.type !== 'scale' && q.type !== 'rating') delete f.max; if (!isChoice(q.type)) { delete f.options; delete f.allowOther; } }
+          return !bad;
+        });
+        if (dropped.length) log('aiReviewLog', '유형에 맞지 않는 지적 ' + dropped.length + '건은 표시하지 않았습니다: ' + dropped.join(' / '));
+        return r;
+      })();
+      const sec = stop();
+      // 문항 번호 검증: 모델이 1부터 세거나 번호를 틀리면 원문 질문(original)으로 다시 찾음. 못 찾으면 그 지적은 버림
+      const norm = t => String(t || '').replace(/\s+/g, ' ').trim();
+      const bad = [];
+      (result.items || []).forEach(it => {
+        it.index = Number(it.index);
+        const q = model.questions[it.index];
+        if (it.original && (!q || norm(q.title) !== norm(it.original))) {
+          const j = model.questions.findIndex(x => norm(x.title) === norm(it.original));
+          if (j >= 0) it.index = j; else if (!q) bad.push(it);
+        } else if (!q) bad.push(it);
+      });
+      // 표준 설계를 문제 삼는 지적은 걸러냄: 척도 중간 값 설명 없음, 5점 척도 자체, 양 끝 설명만 있음, 주관식에 선택지 없음
+      const STANDARD = /중간\s*(값|설명|점|단계)(에 대한|이|의)?\s*(설명)?(이|은|가)?\s*(없|생략|빠)|2,?\s*3,?\s*4점|5점 척도(를|는).*(권장|고려|변경)|주관식.*선택지|선택지.*주관식|응답 예시가 없/;
+      const dropped = (result.items || []).filter(it => !bad.includes(it) && STANDARD.test((it.issue || '') + ' ' + (it.suggestion || '')));
+      result.items = (result.items || []).filter(it => !dropped.includes(it) && !bad.includes(it));
+      // 규칙 점검(모델과 무관하게 항상 실행): 척도 양 끝 설명 비어 있음, 선택지 2개 미만, 빈 질문 문구. 모델이 같은 문항을 이미 지적했으면 중복 추가하지 않음
+      const ruleItems = [];
+      model.questions.forEach((q, i) => {
+        const already = k => result.items.some(it => it.index === i && it.fix && it.fix[k] !== undefined);
+        if (q.type === 'scale' && !(q.labels && q.labels[0] && q.labels[0].trim() && q.labels[1] && q.labels[1].trim()) && !already('labels')) {
+          const labels = guessLabels(q.title);
+          ruleItems.push({ index: i, original: q.title, severity: 'medium', issue: `선형 배율의 양 끝 설명이 비어 있습니다. ${q.min}점과 ${q.max}점이 무엇을 뜻하는지 응답자가 알 수 없습니다.`, suggestion: '양 끝 설명을 채우세요.', fix: { labels }, rule: true });
+        }
+        if ((q.type === 'single' || q.type === 'multi' || q.type === 'dropdown') && (q.options || []).filter(o => String(o).trim()).length < 2 && !already('options')) ruleItems.push({ index: i, original: q.title, severity: 'high', issue: '선택지가 2개 미만입니다.', suggestion: '선택지를 2개 이상 넣으세요.', rule: true });
+        if (!(q.title || '').trim()) ruleItems.push({ index: i, original: q.title, severity: 'high', issue: '질문 문구가 비어 있습니다.', suggestion: '질문을 적으세요.', rule: true });
+      });
+      result.items = result.items.concat(ruleItems).sort((a, b) => a.index - b.index);
+      if (bad.length) log('aiReviewLog', `문항 번호를 확인할 수 없는 지적 ${bad.length}건은 제외했습니다.`);
+      log('aiReviewLog', `응답 도착 · ${used} · ${sec}초 · 지적 ${result.items.length}건` + (ruleItems.length ? ` (규칙 점검 ${ruleItems.length}건 포함)` : '') + (dropped.length ? ` (척도 중간 설명 관련 ${dropped.length}건은 표준 설계이므로 제외)` : '') + (attempts && attempts.length ? ' · ' + attemptsText(attempts) : ''));
+      const sev = { high: ['b-bad', '중요'], medium: ['b-warn', '권장'], low: ['b-gray', '참고'] };
+      // 모델이 준 fix(고친 뒤의 값)를 문항에 실제로 적용할 변경 목록으로 정리 — 예전 응답(rewrite만 있음)도 title 변경으로 받아 줌
+      const FIELD = { title: '질문 문구', description: '설명', options: '선택지', allowOther: '기타 직접 입력', labels: '척도 양 끝 설명', min: '최솟값', max: '최댓값', required: '필수 여부', type: '유형' };
+      const show = (k, v) => k === 'options' ? (v || []).join(' / ') : k === 'labels' ? `${(v || [])[0] || ''} ~ ${(v || [])[1] || ''}` : k === 'type' ? (SURVEY_TYPES[v] ? SURVEY_TYPES[v].name : v) : typeof v === 'boolean' ? (v ? '예' : '아니요') : String(v ?? '');
+      const changesOf = (it, q) => {
+        if (!q) return [];
+        const fix = Object.assign({}, it.fix || {}); if (!fix.title && it.rewrite && it.rewrite.trim() && it.rewrite.trim() !== q.title.trim()) fix.title = it.rewrite.trim();
+        if (fix.title) fix.title = String(fix.title).replace(/^\s*(\d+|[①-⑳]|Q\d*)[.)]?\s*/i, '').trim();   // 모델이 붙인 문항 번호 제거
+        if (fix.title && fix.title === q.title.trim()) delete fix.title;
+        if (fix.description !== undefined && !String(fix.description).trim()) delete fix.description;
+        // 선택지: 지적이 중복·삭제·정리에 관한 것이 아니면 기존 선택지를 지우지 않고 빠진 것만 보탬(모델이 일부만 돌려줘도 응답 데이터가 깨지지 않음)
+        if (Array.isArray(fix.options) && Array.isArray(q.options)) {
+          const t = (it.issue || '') + ' ' + (it.suggestion || '');
+          const clean = fix.options.map(o => String(o).trim()).filter(Boolean);
+          if (!/중복|삭제|제거|정리|통합|합치|줄이|겹치|상호 ?배타/.test(t)) { const merged = q.options.slice(); clean.forEach(o => { if (!merged.includes(o)) merged.push(o); }); fix.options = merged; }
+          else fix.options = clean;
+          if (fix.options.length < 2) delete fix.options;
+        }
+        const out = [];
+        for (const [k, v] of Object.entries(fix)) {
+          if (v == null || !(k in FIELD)) continue;
+          if (k === 'options' && !(q.type === 'single' || q.type === 'multi' || q.type === 'dropdown') && fix.type !== 'single' && fix.type !== 'multi' && fix.type !== 'dropdown') continue;
+          if (k === 'labels' && q.type !== 'scale' && fix.type !== 'scale') continue;
+          if ((k === 'min' || k === 'max') && q.type !== 'scale' && q.type !== 'rating' && fix.type !== 'scale' && fix.type !== 'rating') continue;
+          const cur = q[k]; if (JSON.stringify(cur) === JSON.stringify(v)) continue;
+          if (k === 'options' && !(Array.isArray(v) && v.filter(o => String(o).trim()).length)) continue;
+          out.push({ k, before: show(k, cur), after: show(k, v), value: v });
+        }
+        return out;
+      };
+      // 지적 내용과 무관한 변경(예: 설명이 빠졌다는 지적에 유형·범위까지 바꾸기)은 기본으로 끔 — 사용자가 체크해서 켤 수 있음
+      // 유형·범위 변경은 지적이 그것을 콕 집어 말할 때만 기본 체크. 그 밖에는 꺼 두고 사용자가 직접 켜야 적용됨
+      const RELEVANT = { type: /유형(을|이) (바꾸|변경|수정)|(객관식|체크박스|드롭다운|단답형|장문형|주관식|별점|선형 배율|척도)(으로|로) (바꾸|변경|전환)/, min: /최솟값|최소값|시작 값|0점부터|1점부터|범위(를|가) (바꾸|변경|조정|잘못)/, max: /최댓값|최대값|(\d+)점 척도(로|으로)|(\d+)단계(로|으로)|별 개수|범위(를|가) (바꾸|변경|조정|잘못)/, options: /선택지|보기|옵션|항목이|중복|누락|상호 ?배타|기타/, labels: /설명|양 ?끝|라벨|레이블|기준|앵커|방향/, allowOther: /기타|직접 입력/, required: /필수|선택 사항|응답 강제/, title: /문구|질문|표현|용어|이중|유도|편향|모호|어색|길|짧/, description: /설명|안내/ };
+      const relevant = (it, k) => { const t = (it.issue || '') + ' ' + (it.suggestion || ''); return k === 'title' || k === 'description' ? true : RELEVANT[k].test(t); };
+      const plans = (result.items || []).map(it => changesOf(it, model.questions[it.index]).map(c => ({ ...c, on: relevant(it, c.k) })));
+      $('aiReview').innerHTML = `<div class="hint"><b>총평</b> ${esc(result.overall || '')} <span class="muted">(${esc(used)})</span></div>` +
+        ((result.items || []).length ? (result.items || []).map((it, k) => {
+          const q = model.questions[it.index]; const [cls, label] = sev[it.severity] || sev.low; const ch = plans[k];
+          return `<div class="q-card" style="border-left-color:${it.severity === 'high' ? 'var(--bad)' : it.severity === 'medium' ? 'var(--warn)' : 'var(--line)'}">
+            <div><span class="badge ${cls}">${label}</span>${it.rule ? ' <span class="muted" style="font-size:11px">규칙 점검</span>' : ''} <b>${it.index + 1}번</b> ${esc(q ? q.title : '(빈 질문)')}</div>
+            <div style="margin-top:4px">${esc(it.issue)}</div>
+            ${it.suggestion ? `<div class="muted" style="margin-top:2px">제안: ${esc(it.suggestion)}</div>` : ''}
+            ${ch.length ? `<div style="margin-top:6px;font-size:13px">${ch.map((c, j) => `<label style="display:block;cursor:pointer"><input type="checkbox" data-chg="${k}:${j}"${c.on ? ' checked' : ''}> <span class="muted">${FIELD[c.k]}:</span> <s style="color:#999">${esc(c.before)}</s> → <b>${esc(c.after)}</b>${c.on ? '' : ' <span class="muted">(지적 내용과 무관해 보여 꺼 둠)</span>'}</label>`).join('')}<div class="row" style="margin-top:6px"><button class="btn sm sec" data-apply="${k}">체크한 항목만 고치기</button></div></div>`
+              : (q ? '<div class="muted" style="margin-top:4px">자동으로 고칠 값이 없어 직접 수정해야 합니다.</div>' : '')}
+          </div>`; }).join('') : '<p class="muted">특별히 고칠 문항이 없습니다.</p>');
+      $('aiReview').querySelectorAll('[data-apply]').forEach(b => b.onclick = () => {
+        const k = +b.dataset.apply, it = result.items[k], q = model.questions[it.index]; if (!q) return;
+        const ch = plans[k].filter((c, j) => { const cb = $('aiReview').querySelector(`[data-chg="${k}:${j}"]`); return cb ? cb.checked : c.on; });
+        if (!ch.length) return Modal.alert('고칠 항목을 하나 이상 체크하세요.');
+        const typeChange = ch.find(c => c.k === 'type');
+        if (typeChange) changeType(q, typeChange.value);
+        for (const c of ch) { if (c.k === 'type') continue; q[c.k] = Array.isArray(c.value) ? c.value.map(String) : (c.k === 'min' || c.k === 'max') ? Number(c.value) : (c.k === 'required' || c.k === 'allowOther') ? !!c.value : String(c.value); }
+        if (q.type === 'scale') { q.labels = (q.labels || ['', '']).slice(0, 2); while (q.labels.length < 2) q.labels.push(''); if (q.min >= q.max) { q.min = 1; q.max = Math.max(2, q.max || 5); } }
+        if (!(q.type === 'single' || q.type === 'multi' || q.type === 'dropdown')) { delete q.options; delete q.allowOther; }
+        if (q.options) q.options = q.options.map(o => String(o).trim()).filter(Boolean);
+        delete q.draft; markDirty(); reviewSig = model.questions.map(x => x.id + ':' + x.type).join('|'); renderQuestions(); renderPreview();
+        b.textContent = '적용됨'; b.disabled = true;
+      });
+      $('aiReviewMsg').textContent = `${(result.items || []).length}건`;
+    } catch (err) { stop(); $('aiReviewMsg').textContent = ''; log('aiReviewLog', '실패: ' + err.message + (AiClient.lastAttempts ? ' · ' + attemptsText(AiClient.lastAttempts) : '')); await Modal.alert(aiFailText('검토 실패', err)); }
+    $('aiReviewBtn').disabled = false;
+  };
+  // 가져온 문항을 기존 문항 뒤에 붙일지, 기존 문항을 지우고 바꿀지 묻습니다. 취소(Esc)는 아무것도 바꾸지 않음
+  async function askMergeMode(head) {
+    if (!model.questions.length) return 'append';
+    if (await Modal.confirm(head + '\n기존 문항 ' + model.questions.length + '개 뒤에 추가할까요?\n("취소"를 누르면 기존 문항을 모두 바꿀지 다시 묻습니다)')) return 'append';
+    if (await Modal.confirm('기존 문항 ' + model.questions.length + '개를 모두 지우고 가져온 문항으로 바꿀까요?\n("취소"를 누르면 아무것도 바꾸지 않습니다)')) return 'replace';
+    return null;
+  }
+  const toBase64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(f); });
+
+  $('pdfFile').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    clearAiPanels();
+    try {
+      pdfLog(`"${f.name}" 읽는 중…`);
+      // 1) AI로 먼저 시도
+      const ai = await AiClient.status(); aiOn = !!ai.enabled;
+      if (aiOn && f.size <= 20 * 1024 * 1024) {
+        try {
+          pdfLog('AI(Gemini)로 문항을 추출하는 중… (10~40초)');
+          const { model: used, result } = await AiClient.run('pdf', { pdfBase64: await toBase64(f) });
+          const qs = fromAiQuestions(result.questions);
+          if (!qs.length) throw new Error('문항을 찾지 못했습니다.');
+          const mode = await askMergeMode(`AI가 문항 ${qs.length}개를 찾았습니다.`); if (!mode) { pdfLog('가져오기를 취소했습니다.'); e.target.value = ''; return; }
+          if (mode === 'replace') model.questions = [];
+          if (!model.title.trim() && result.title) model.title = result.title;
+          if (!model.description && result.description) model.description = result.description;
+          model.questions.push(...qs);
+          pdfLog(`AI(${used})가 문항 ${qs.length}개를 추가했습니다: ` + qs.map(q => SURVEY_TYPES[q.type].name).join(', '));
+          pdfLog('노란 표시가 붙은 문항의 질문·선택지·유형을 확인한 뒤 저장하세요.');
+          markDirty(); renderAll(); e.target.value = ''; return;
+        } catch (err) { pdfLog((isAiExhausted(err) ? `AI 추출 건너뜀(사용 가능한 모델 없음, ${retryHint(err)} 다시 사용 가능)` : 'AI 추출 실패(' + err.message + ')') + '. 규칙 방식으로 다시 시도합니다.'); }
+      } else if (!aiOn) pdfLog('AI가 설정되지 않아 규칙 방식으로 읽습니다.');
+      // 2) 규칙 방식
+      const lines = await extractLines(f);
+      pdfLog(`글자 줄 ${lines.length}개를 읽었습니다.`);
+      if (!lines.length) throw new Error('글자를 찾지 못했습니다. 스캔 이미지 PDF일 수 있습니다.');
+      const r = pdfToQuestions(lines);
+      if (!r.questions.length) throw new Error('"1. 질문" 형식의 번호 문항을 찾지 못했습니다. 문항 번호가 있는 설문지인지 확인하세요.');
+      const mode = await askMergeMode(`문항 ${r.questions.length}개를 찾았습니다.`); if (!mode) { pdfLog('가져오기를 취소했습니다.'); e.target.value = ''; return; }
+      if (mode === 'replace') model.questions = [];
+      if (!model.title.trim() && r.title) model.title = r.title;
+      model.questions.push(...r.questions);
+      pdfLog(`문항 ${r.questions.length}개를 추가했습니다: ` + r.questions.map(q => SURVEY_TYPES[q.type].name).join(', '));
+      pdfLog('노란 표시가 붙은 문항의 질문·선택지·유형을 확인한 뒤 저장하세요.');
+      markDirty(); renderAll();
+    } catch (err) { pdfLog('실패: ' + err.message); await Modal.alert('PDF를 읽지 못했습니다: ' + err.message); }
+    e.target.value = '';
+  };
+
+  /* ---------- 시작 ---------- */
+  if (sessionStorage.getItem('surveyAdmin') === ADMIN_PASSWORD_HASH) start();
+  else location.replace('index.html?next=' + encodeURIComponent('editor.html' + location.search));
+})();
+</script>
+</body>
+</html>
