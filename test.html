@@ -138,7 +138,6 @@ body.wiz #wiz-nav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:5;
   padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 #wiz-nav .btn{flex:1;max-width:330px}
 body.wiz #wiz-nav{justify-content:center}
-#wiz-nav .hint{font-size:12px;color:var(--warn);position:absolute;top:-22px;left:16px;right:16px;text-align:center;background:var(--bg)}
 body.wiz .q{grid-template-columns:minmax(0,1fr);padding:16px}
 body.wiz .q .text{font-size:17px;font-weight:500}
 body.wiz .q .yn,body.wiz .sub .yn{justify-self:stretch;width:100%}
@@ -159,7 +158,7 @@ body.wiz details.info-box summary::-webkit-details-marker{display:none}
 <div class="wrap">
 <header>
   <h1>팔·손 반복 작업 빠른 평가</h1>
-  <p class="lead">작업을 한 사이클 이상 지켜본 뒤, 1단계부터 답하세요.</p>
+  <p class="lead">작업을 한 사이클 이상 지켜본 뒤 답하세요. 답을 고르면 다음 문항으로 바로 넘어가고, 고치려면 ‘이전’을 누르세요.</p>
   <dl class="terms">
     <dt>근무 시간</dt><dd>1교대 전체 시간</dd>
     <dt>반복 작업 시간</dt><dd>반복 동작을 실제로 한 시간의 합계</dd>
@@ -263,7 +262,6 @@ body.wiz details.info-box summary::-webkit-details-marker{display:none}
 </div>
 
 <nav id="wiz-nav" aria-label="문항 이동">
-  <span class="hint" id="wiz-hint" hidden>답을 골라야 다음으로 넘어갑니다.</span>
   <button type="button" class="btn" id="b-prev">이전</button>
   <button type="button" class="btn primary" id="b-next">다음</button>
 </nav>
@@ -359,9 +357,7 @@ function renderLayout(){
   const ok=atResult||cardOk(cur);
   const last=cur==="c-1a"?ans["1a"]==="no":idx===sq.length-1;
   $("b-next").textContent=last?"결과 보기":(cur==="c-info"?"다음 (건너뛰기 가능)":"다음");
-  $("b-next").setAttribute("aria-disabled",String(!ok));
-  $("b-next").classList.toggle("primary",ok);
-  $("wiz-hint").hidden=true;
+  $("b-next").disabled=!ok;
 }
 function seq(){return ["c-info","c-1a",...(ans["1a"]==="yes"?REST:[])];}
 function hideResult(note){
@@ -425,19 +421,31 @@ let resetArmed=null;
 $("b-reset").addEventListener("click",()=>{
   const b=$("b-reset");
   if(!resetArmed){b.textContent="한 번 더 누르면 지웁니다";resetArmed=setTimeout(()=>{b.textContent="다시 시작";resetArmed=null;},3000);return;}
-  clearTimeout(resetArmed); resetArmed=null; b.textContent="다시 시작";
+  clearTimeout(resetArmed); resetArmed=null; b.textContent="다시 시작"; clearTimeout(autoTimer);
   Object.keys(ans).forEach(k=>delete ans[k]); Object.keys(st).forEach(k=>st[k]=null);
   document.querySelectorAll("input[type=radio]").forEach(i=>i.checked=false);
   document.querySelectorAll(".info input").forEach(i=>i.value="");
   document.querySelectorAll(".card.miss").forEach(c=>c.classList.remove("miss"));
   idx=0; $("msg").textContent=""; hideResult(); renderInputs(); renderLayout(); window.scrollTo(0,0);
 });
-$("b-prev").addEventListener("click",()=>{if(idx>0){idx--;renderLayout();window.scrollTo(0,0);}});
-$("b-next").addEventListener("click",()=>{
+$("b-prev").addEventListener("click",()=>{clearTimeout(autoTimer);if(idx>0){idx--;renderLayout();window.scrollTo(0,0);}});
+function goNext(){
+  clearTimeout(autoTimer);
   const sq=seq(), cur=sq[idx];
-  if(!cardOk(cur)){$("wiz-hint").hidden=false;$(cur).classList.add("miss");return;}
+  if(idx>=sq.length||!cardOk(cur)) return;
   if(idx===sq.length-1){ if(!showResult()) return; }
   idx++; renderLayout(); window.scrollTo(0,0);
+}
+$("b-next").addEventListener("click",goNext);
+
+/* 답을 고르면 자동으로 다음 문항으로 (이미 고른 답을 다시 눌러도 넘어감) */
+let autoTimer=null;
+$("form").addEventListener("click",e=>{
+  const t=e.target;
+  if(!wiz||!(t instanceof HTMLInputElement)||t.type!=="radio") return;
+  const card=t.closest(".card"); if(!card) return;
+  clearTimeout(autoTimer);
+  autoTimer=setTimeout(()=>{ if(seq()[idx]===card.id && cardOk(card.id)) goNext(); },350);
 });
 
 /* 시작 */
