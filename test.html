@@ -2,11 +2,11 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>팔·손 반복 작업 빠른 평가</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
-/* 모든 화면: 한 문항씩 넘기는 화면(스크립트가 꺼진 경우에만 전체 목록) */
+/* 데스크톱·태블릿(601px 이상): 한 화면에 전체 목록 + 결과 패널 / 휴대폰(600px 이하): 한 문항씩 넘기는 화면 */
 :root{
   --bg:#f3f5f4; --surface:#ffffff; --fg:#1b2422; --muted:#5c6a66; --line:#d5ddda;
   --accent:#1f6f62; --accent-soft:#e1efec;
@@ -130,8 +130,19 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
 .text small.ref{color:var(--accent);font-weight:700}
 .foot{font-size:13px;color:var(--muted);margin:0}
 /* 한 문항씩 넘기는 화면 */
+@media (max-width:600px){
+  body.wiz.typing{padding-top:8px}
+  body.wiz.typing header,body.wiz.typing .step-head,body.wiz.typing .q .tag{display:none}
+  body.wiz.typing .q{padding-top:12px}
+  body.wiz.typing #wiz-nav{padding-top:6px;padding-bottom:6px}
+  body.wiz.typing #wiz-nav .btn{min-height:40px;padding:6px 12px}
+}
+body.kb #wiz-nav{padding-bottom:6px}
 #wiz-top,#wiz-nav{display:none}
-body.wiz{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px));padding-top:16px}
+.lead-wiz{display:none}
+body.wiz .lead-wiz{display:inline}
+body.wiz .lead-wide{display:none}
+body.wiz{padding-bottom:calc(96px + var(--kb,0px) + env(safe-area-inset-bottom,0px));padding-top:16px}
 body.wiz .wrap{gap:14px;max-width:680px;grid-template-columns:minmax(0,1fr)}
 body.wiz aside{position:static}
 body.wiz header .lead{font-size:14px}
@@ -139,7 +150,7 @@ body.wiz #wiz-top{display:flex;flex-direction:column;gap:6px;grid-column:1/-1}
 .wiz-count{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 .wiz-bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
 .wiz-bar i{display:block;height:100%;background:var(--accent);width:0}
-body.wiz #wiz-nav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:5;gap:10px;align-items:center;
+body.wiz #wiz-nav{display:flex;position:fixed;left:0;right:0;bottom:var(--kb,0px);z-index:5;gap:10px;align-items:center;
   background:var(--surface);border-top:1px solid var(--line);
   padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 #wiz-nav .btn{flex:1;max-width:330px}
@@ -164,7 +175,7 @@ body.wiz details.info-box summary::-webkit-details-marker{display:none}
 <div class="wrap">
 <header>
   <h1>팔·손 반복 작업 빠른 평가</h1>
-  <p class="lead">작업을 한 사이클 이상 지켜본 뒤 답하세요. 답을 고르면 다음 문항으로 바로 넘어가고, 고치려면 ‘이전’을 누르세요.</p>
+  <p class="lead"><span class="lead-wide">작업을 한 사이클 이상 지켜본 뒤 위에서부터 답하고, 마지막에 ‘결과 보기’를 누르세요.</span><span class="lead-wiz">작업을 한 사이클 이상 지켜본 뒤 답하세요. 답을 고르면 다음 문항으로 바로 넘어가고, 고치려면 ‘이전’을 누르세요.</span></p>
   <dl class="terms">
     <dt>근무 시간</dt><dd>1교대 전체 시간</dd>
     <dt>반복 작업 시간</dt><dd>반복 동작을 실제로 한 시간의 합계</dd>
@@ -188,7 +199,6 @@ body.wiz details.info-box summary::-webkit-details-marker{display:none}
         <label>라인, 작업 위치<input id="f-line" type="text"></label>
         <label>작업자 수(남, 여)<input id="f-workers" type="text"></label>
         <label class="full">작업 내용<input id="f-task" type="text"></label>
-        <label>점심 휴식 시간<input id="f-lunch" type="text" placeholder="예: 60분"></label>
       </div>
     </details>
   </section>
@@ -196,8 +206,9 @@ body.wiz details.info-box summary::-webkit-details-marker{display:none}
   <section class="step s0" id="s0" data-stage="기본 정보 · 필수">
     <div class="step-head"><span class="step-no">기본 정보</span><h2>근무와 휴식</h2></div>
     <div class="q card numq" id="c-hours"><div class="tag"><span class="code">기본 1</span>근무 시간</div><div class="text">1교대 근무 시간은 몇 시간인가?<small>식사·휴식 시간을 포함한 전체 시간</small><div class="num"><input id="n-hours" type="number" inputmode="decimal" min="0.5" max="24" step="0.5" placeholder="예: 8" autocomplete="off"><span>시간</span></div><small class="err" id="e-hours" hidden></small></div></div>
-    <div class="q card numq" id="c-rep"><div class="tag"><span class="code">기본 2</span>반복 작업 시간</div><div class="text">팔·손 반복 동작을 실제로 한 시간은 모두 몇 시간인가?<small>쉬는 시간을 뺀 합계 · 2f, 3f를 자동 판정</small><div class="num"><input id="n-rep" type="number" inputmode="decimal" min="0" max="24" step="0.5" placeholder="예: 6" autocomplete="off"><span>시간</span></div><small class="err" id="e-rep" hidden></small></div></div>
-    <div class="q card numq" id="c-breaks"><div class="tag"><span class="code">기본 3</span>휴식 횟수</div><div class="text">10분 이상 쉬는 횟수는 1교대에 몇 번인가?<small>점심 등 식사 시간 포함</small><div class="num"><input id="n-breaks" type="number" inputmode="numeric" min="0" max="20" step="1" placeholder="예: 3" autocomplete="off"><span>번</span></div><small class="err" id="e-breaks" hidden></small></div></div>
+    <div class="q card numq" id="c-lunch"><div class="tag"><span class="code">기본 2</span>점심 휴식</div><div class="text">점심(식사) 휴식 시간은 몇 분인가?<small>근무 시간 안에 든 식사 시간 · 없으면 0</small><div class="num"><input id="n-lunch" type="number" inputmode="numeric" min="0" max="180" step="1" placeholder="예: 60" autocomplete="off"><span>분</span></div><small class="err" id="e-lunch" hidden></small></div></div>
+    <div class="q card numq" id="c-rep"><div class="tag"><span class="code">기본 3</span>반복 작업 시간</div><div class="text">팔·손 반복 동작을 실제로 한 시간은 모두 몇 시간인가?<small>점심·쉬는 시간을 뺀 합계 · 2f, 3f를 자동 판정</small><div class="num"><input id="n-rep" type="number" inputmode="decimal" min="0" max="24" step="0.5" placeholder="예: 6" autocomplete="off"><span>시간</span></div><small class="err" id="e-rep" hidden></small></div></div>
+    <div class="q card numq" id="c-breaks"><div class="tag"><span class="code">기본 4</span>휴식 횟수</div><div class="text">10분 이상 쉬는 횟수는 1교대에 몇 번인가?<small>점심 등 식사 시간도 1번으로 셈</small><div class="num"><input id="n-breaks" type="number" inputmode="numeric" min="0" max="20" step="1" placeholder="예: 3" autocomplete="off"><span>번</span></div><small class="err" id="e-breaks" hidden></small></div></div>
   </section>
 
   <section class="step s1" id="s1" data-stage="1단계 · 평가 대상">
@@ -238,7 +249,7 @@ body.wiz details.info-box summary::-webkit-details-marker{display:none}
     <div class="q card" id="c-2e"><div class="tag"><span class="code">2e</span>휴식</div><div class="text">2시간마다 10분 이상 쉬는가? (식사 포함)
       <small class="ref" id="h-2e"></small>
       <div class="band" aria-hidden="true"><i>작업</i><i>작업</i><i class="br"></i><i>작업</i><i>작업</i><i class="br"></i><i>작업</i><i>작업</i><i class="br"></i><i>작업</i><i>작업</i></div></div><div class="yn" role="radiogroup" data-q="2e"><input type="radio" id="q2e-no" name="q2e" value="no"><label for="q2e-no">아니요</label><input type="radio" id="q2e-yes" name="q2e" value="yes"><label for="q2e-yes">예</label></div></div>
-    <div class="q result" id="r-2f"><div class="tag"><span class="code">2f</span>반복 작업 시간</div><div class="text">반복 작업 시간이 하루 8시간 이하인가?<small>결과 · 기본 2에서 자동 판정</small></div><div class="auto" id="a-2f">—</div></div>
+    <div class="q result" id="r-2f"><div class="tag"><span class="code">2f</span>반복 작업 시간</div><div class="text">반복 작업 시간이 하루 8시간 이하인가?<small>결과 · 기본 3에서 자동 판정</small></div><div class="auto" id="a-2f">—</div></div>
   </section>
 
   <section class="step s3" id="s3" data-stage="3단계 · 심각 조건">
@@ -253,7 +264,7 @@ body.wiz details.info-box summary::-webkit-details-marker{display:none}
     <div class="q card" id="c-3e"><div class="tag"><span class="code">3e</span>휴식</div><div class="text">근무 시간 6~8시간 중 휴식이 1번 이하인가? (식사 포함)
       <small class="ref" id="h-3e"></small>
       <div class="band" aria-hidden="true"><i>작업</i><i>작업</i><i>작업</i><i class="br"></i><i>작업</i><i>작업</i><i>작업</i><i>작업</i></div></div><div class="yn" role="radiogroup" data-q="3e"><input type="radio" id="q3e-no" name="q3e" value="no"><label for="q3e-no">아니요</label><input type="radio" id="q3e-yes" name="q3e" value="yes"><label for="q3e-yes">예</label></div></div>
-    <div class="q result" id="r-3f"><div class="tag"><span class="code">3f</span>반복 작업 시간</div><div class="text">반복 작업 시간이 1교대에 8시간을 넘는가?<small>결과 · 기본 2에서 자동 판정</small></div><div class="auto" id="a-3f">—</div></div>
+    <div class="q result" id="r-3f"><div class="tag"><span class="code">3f</span>반복 작업 시간</div><div class="text">반복 작업 시간이 1교대에 8시간을 넘는가?<small>결과 · 기본 3에서 자동 판정</small></div><div class="auto" id="a-3f">—</div></div>
   </section>
 </main>
 
@@ -284,10 +295,10 @@ const Q2=["2a","2b","2c","2d","2e","2f"], Q3=["3a","3b","3c","3d","3e","3f"];
 const LABEL={"1a":"반복 작업 여부","2a":"작업 시간","2b":"어깨 자세","2c":"평소 힘","2d":"센 힘 없음","2e":"2시간마다 휴식","2f":"반복 작업 8시간 이하",
   "3a":"동작 속도","3b":"어깨 자세","3c":"손가락 자세","3d":"센 힘","3e":"휴식 1번 이하","3f":"반복 작업 8시간 넘음"};
 const BORG=["없음","매우 가벼움","가벼움","보통","","힘듦(무거움)","","매우 힘듦","","","극도로 힘듦"];
-const CARD_KEYS={"c-info":[],"c-hours":["hours"],"c-rep":["rep"],"c-breaks":["breaks"],"c-1a":["1a"],"c-2a":["2a"],"c-2b":["2b"],"c-f1":["typ","dur2c"],"c-f2":["peak","dur3d"],
+const CARD_KEYS={"c-info":[],"c-hours":["hours"],"c-lunch":["lunch"],"c-rep":["rep"],"c-breaks":["breaks"],"c-1a":["1a"],"c-2a":["2a"],"c-2b":["2b"],"c-f1":["typ","dur2c"],"c-f2":["peak","dur3d"],
   "c-2e":["2e"],"c-3a":["3a"],"c-3b":["3b"],"c-3c":["3c"],"c-3e":["3e"]};
 const REST=["c-2a","c-2b","c-f1","c-f2","c-2e","c-3a","c-3b","c-3c","c-3e"];
-const NUMS=["hours","rep","breaks"];
+const NUMS=["hours","lunch","rep","breaks"];
 const fmt=n=>String(Math.round(n*100)/100);
 /* 숫자 입력 검사: 맞으면 값, 비었으면 null, 틀리면 오류 문구 */
 function numState(k){
@@ -296,12 +307,22 @@ function numState(k){
   const n=Number(raw);
   if(!isFinite(n)) return {v:null,err:"숫자만 입력하세요."};
   if(k==="hours"&&(n<=0||n>24)) return {v:null,err:"0보다 크고 24 이하로 입력하세요."};
+  if(k==="lunch"){
+    if(!Number.isInteger(n)||n<0||n>180) return {v:null,err:"0~180 사이의 정수(분)로 입력하세요."};
+    const h=numState("hours").v;
+    if(h!==null&&n>=h*60) return {v:null,err:`근무 시간(${fmt(h)}시간)보다 짧아야 합니다.`};
+  }
   if(k==="rep"){
     if(n<0||n>24) return {v:null,err:"0~24 사이로 입력하세요."};
-    const h=numState("hours").v;
+    const h=numState("hours").v, l=numState("lunch").v;
+    if(h!==null&&l!==null&&n>h-l/60) return {v:null,err:`근무 시간에서 점심을 뺀 ${fmt(h-l/60)}시간보다 클 수 없습니다.`};
     if(h!==null&&n>h) return {v:null,err:`근무 시간(${fmt(h)}시간)보다 클 수 없습니다.`};
   }
-  if(k==="breaks"&&(!Number.isInteger(n)||n<0||n>20)) return {v:null,err:"0~20 사이의 정수로 입력하세요."};
+  if(k==="breaks"){
+    if(!Number.isInteger(n)||n<0||n>20) return {v:null,err:"0~20 사이의 정수로 입력하세요."};
+    const l=numState("lunch").v;
+    if(l!==null&&l>=10&&n<1) return {v:null,err:`점심 휴식(${l}분)도 10분 이상 휴식 1번으로 셉니다. 1 이상으로 입력하세요.`};
+  }
   return {v:n,err:""};
 }
 const numVal=k=>numState(k).v;
@@ -315,7 +336,11 @@ document.querySelectorAll(".yn[data-sub]").forEach(b=>b.addEventListener("change
 NUMS.forEach(k=>{
   const el=$("n-"+k);
   el.addEventListener("input",changed);
-  el.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();goNext();}});
+  el.addEventListener("keydown",e=>{
+    if(e.key!=="Enter") return; e.preventDefault();
+    if(wiz){goNext();return;}
+    const nx=NUMS[NUMS.indexOf(k)+1]; if(nx) $("n-"+nx).focus(); else $("q1a-no").focus();
+  });
 });
 document.querySelectorAll(".picker").forEach(el=>el.addEventListener("change",e=>{
   const key=el.dataset.key, n=+e.target.value; st[key]=n; if(key==="peak"&&n<5) st.dur3d=null; changed();
@@ -367,9 +392,9 @@ function renderInputs(){
     el.textContent=v==="yes"?"예":v==="no"?"아니요":"—";
   });
   NUMS.forEach(k=>{const e=$("e-"+k), m=numState(k).err; e.textContent=m; e.hidden=!m;});
-  const h=numVal("hours"), r=numVal("rep"), b=numVal("breaks");
+  const h=numVal("hours"), r=numVal("rep"), b=numVal("breaks"), l=numVal("lunch");
   $("h-1a").textContent=r===null?"":`입력한 반복 작업 시간: ${fmt(r)}시간`+(r<1?" (1시간 미만)":"");
-  const rest=(h===null||b===null)?"":`입력한 값: 근무 ${fmt(h)}시간, 10분 이상 휴식 ${b}번`;
+  const rest=(h===null||b===null||l===null)?"":`입력한 값: 근무 ${fmt(h)}시간(점심 ${l}분 포함), 10분 이상 휴식 ${b}번(점심 포함)`;
   $("h-2e").textContent=rest; $("h-3e").textContent=rest;
   document.querySelectorAll(".card.miss").forEach(c=>{if(cardOk(c.id)) c.classList.remove("miss");});
   const n=missing().length;
@@ -404,7 +429,7 @@ function renderLayout(){
   const ni=!atResult&&$(cur).querySelector(".num input");
   if(ni&&document.activeElement!==ni) ni.focus({preventScroll:true});
 }
-function seq(){return ["c-info","c-hours","c-rep","c-breaks","c-1a",...(ans["1a"]==="yes"?REST:[])];}
+function seq(){return ["c-info","c-hours","c-lunch","c-rep","c-breaks","c-1a",...(ans["1a"]==="yes"?REST:[])];}
 function hideResult(note){
   shown=false; $("b-copy").disabled=true;
   $("verdict").className="verdict";
@@ -447,9 +472,9 @@ function summary(){
   const v=verdict(), g=id=>$(id).value.trim();
   const lines=["[팔·손 반복 작업 빠른 평가 결과]"];
   [["회사","f-company"],["구역","f-area"],["라인, 작업 위치","f-line"],["작업자 수","f-workers"],["작업 내용","f-task"],
-   ["점심 휴식 시간","f-lunch"]]
+]
     .forEach(([k,id])=>{if(g(id))lines.push(`${k}: ${g(id)}`);});
-  lines.push(`근무 시간(1교대): ${fmt(numVal("hours"))}시간`,`반복 작업 시간(합계): ${fmt(numVal("rep"))}시간`,`10분 이상 휴식: ${numVal("breaks")}번`);
+  lines.push(`근무 시간(1교대): ${fmt(numVal("hours"))}시간`,`점심 휴식 시간: ${numVal("lunch")}분`,`반복 작업 시간(합계): ${fmt(numVal("rep"))}시간`,`10분 이상 휴식: ${numVal("breaks")}번`);
   lines.push(`판정: ${v.t}`, v.p, "");
   if(ans["1a"]==="yes"){lines.push(`힘 점수(평소): ${st.typ}점`,`힘 점수(최고): ${st.peak}점`);}
   ["1a",...(ans["1a"]==="yes"?[...Q2,...Q3]:[])].forEach(q=>lines.push(`${q} ${LABEL[q]}: ${ans[q]==="yes"?"예":"아니요"}`+(["2c","2d","2f","3d","3f"].includes(q)?" (자동)":"")));
@@ -494,10 +519,57 @@ $("form").addEventListener("click",e=>{
   autoTimer=setTimeout(()=>{ if(seq()[idx]===card.id && cardOk(card.id)) goNext(); },350);
 });
 
+/* 키패드에 입력 칸이 가리지 않게 */
+const narrow=window.matchMedia("(max-width:600px)");
+const isField=el=>el instanceof HTMLInputElement&&el.type!=="radio";
+function kbHeight(){
+  const vv=window.visualViewport; if(!vv) return 0;
+  const h=Math.round(window.innerHeight-vv.height-vv.offsetTop);
+  return h>80?h:0;               /* 주소창 변화 같은 작은 차이는 무시 */
+}
+function ensureVisible(){
+  const el=document.activeElement; if(!isField(el)) return;
+  const vv=window.visualViewport;
+  const top=(vv?vv.offsetTop:0)+12;
+  const bottom=(vv?vv.offsetTop+vv.height:window.innerHeight)-$("wiz-nav").offsetHeight-12;
+  const box=(el.closest(".num")||el).getBoundingClientRect();
+  const err=el.closest(".text")?.querySelector(".err:not([hidden])");
+  const low=err?Math.max(box.bottom,err.getBoundingClientRect().bottom):box.bottom;
+  if(low>bottom) window.scrollBy(0,low-bottom);
+  else if(box.top<top) window.scrollBy(0,box.top-top);
+}
+function onViewport(){
+  const k=kbHeight();
+  document.documentElement.style.setProperty("--kb",k+"px");
+  document.body.classList.toggle("kb",k>0);
+  ensureVisible();
+}
+if(window.visualViewport){
+  visualViewport.addEventListener("resize",onViewport);
+  visualViewport.addEventListener("scroll",onViewport);
+}
+window.addEventListener("resize",()=>setTimeout(ensureVisible,50));
+document.addEventListener("focusin",e=>{
+  if(!isField(e.target)) return;
+  if(narrow.matches) document.body.classList.add("typing");
+  [60,300,600].forEach(t=>setTimeout(ensureVisible,t));   /* 키패드가 다 올라올 때까지 몇 번 확인 */
+});
+document.addEventListener("focusout",()=>setTimeout(()=>{
+  if(!isField(document.activeElement)) document.body.classList.remove("typing");
+},120));
+document.addEventListener("input",e=>{if(isField(e.target)) ensureVisible();});   /* 오류 문구가 생겨도 보이게 */
+
 /* 시작 */
-/* 모든 화면에서 한 문항씩 넘기기 */
-wiz=true; document.body.classList.add("wiz");
-hideResult(); renderInputs(); renderLayout();
+/* 휴대폰(600px 이하)만 한 문항씩, 넓은 화면은 전체 목록 */
+const mq=window.matchMedia("(max-width: 600px)");
+function applyMode(){
+  wiz=mq.matches; document.body.classList.toggle("wiz",wiz);
+  if(!wiz) document.body.classList.remove("typing");
+  if(wiz){ idx=Math.min(idx,seq().length-1); if(shown) idx=seq().length; }
+  renderLayout();
+}
+(mq.addEventListener?mq.addEventListener("change",applyMode):mq.addListener(applyMode));
+hideResult(); renderInputs(); applyMode();
 </script>
 </body>
 </html>
