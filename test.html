@@ -149,15 +149,18 @@ body:not(.wiz) .info input{font-size:15px}
   body.wiz.typing{padding-top:8px}
   body.wiz.typing header,body.wiz.typing .step-head,body.wiz.typing .q .tag{display:none}
   body.wiz.typing .q{padding-top:12px}
-  body.wiz.typing #wiz-nav{padding-top:6px;padding-bottom:6px}
-  body.wiz.typing #wiz-nav .btn{min-height:40px;padding:6px 12px}
+  body.wiz.typing #wiz-nav{display:none}
+  body.wiz.typing{padding-bottom:24px}
+  body.wiz.typing .inline-nav{display:flex}
 }
-body.kb #wiz-nav{padding-bottom:6px}
+.inline-nav{display:none;gap:10px;padding:4px 0 2px;grid-column:1/-1}
+.inline-nav .btn{flex:1}
+#c-info .inline-nav{padding:0 18px 16px}
 #wiz-top,#wiz-nav{display:none}
 .lead-wiz{display:none}
 body.wiz .lead-wiz{display:inline}
 body.wiz .lead-wide{display:none}
-body.wiz{padding-bottom:calc(96px + var(--kb,0px) + env(safe-area-inset-bottom,0px));padding-top:16px}
+body.wiz{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px));padding-top:16px}
 body.wiz .wrap{gap:14px;max-width:680px;grid-template-columns:minmax(0,1fr)}
 body.wiz aside{position:static}
 body.wiz header .lead{font-size:14px}
@@ -165,7 +168,7 @@ body.wiz #wiz-top{display:flex;flex-direction:column;gap:6px;grid-column:1/-1}
 .wiz-count{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 .wiz-bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
 .wiz-bar i{display:block;height:100%;background:var(--accent);width:0}
-body.wiz #wiz-nav{display:flex;position:fixed;left:0;right:0;bottom:var(--kb,0px);z-index:5;gap:10px;align-items:center;
+body.wiz #wiz-nav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:5;gap:10px;align-items:center;
   background:var(--surface);border-top:1px solid var(--line);
   padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
 #wiz-nav .btn{flex:1;max-width:330px}
@@ -300,6 +303,10 @@ body.wiz details.info-box summary::-webkit-details-marker{display:none}
 </aside>
 </div>
 
+<div class="inline-nav" id="wiz-inline" aria-label="문항 이동(입력 중)">
+  <button type="button" class="btn" id="bi-prev">이전</button>
+  <button type="button" class="btn primary" id="bi-next">다음</button>
+</div>
 <nav id="wiz-nav" aria-label="문항 이동">
   <button type="button" class="btn" id="b-prev">이전</button>
   <button type="button" class="btn primary" id="b-next">다음</button>
@@ -441,6 +448,13 @@ function renderLayout(){
   const last=cur==="c-1a"?ans["1a"]==="no":idx===sq.length-1;
   $("b-next").textContent=last?"결과 보기":(cur==="c-info"?"다음 (건너뛰기 가능)":"다음");
   $("b-next").disabled=!ok;
+  const inl=$("wiz-inline"), card=atResult?null:$(cur);
+  if(card&&card.querySelector(".num input,.info input")){ if(inl.parentNode!==card) card.appendChild(inl); }
+  else if(inl.parentNode!==document.body) document.body.appendChild(inl);
+  $("bi-prev").disabled=$("b-prev").disabled;
+  $("bi-next").disabled=$("b-next").disabled; $("bi-next").textContent=$("b-next").textContent;
+  const ae=document.activeElement;
+  if(ae instanceof HTMLInputElement&&ae.type!=="radio"&&!(card&&card.contains(ae))){ ae.blur(); document.body.classList.remove("typing"); }
   const ni=!atResult&&$(cur).querySelector(".num input");
   if(ni&&document.activeElement!==ni) ni.focus({preventScroll:true});
 }
@@ -537,32 +551,22 @@ $("form").addEventListener("click",e=>{
 /* 키패드에 입력 칸이 가리지 않게 */
 const narrow=window.matchMedia("(max-width:600px)");
 const isField=el=>el instanceof HTMLInputElement&&el.type!=="radio";
-function kbHeight(){
-  const vv=window.visualViewport; if(!vv) return 0;
-  const h=Math.round(window.innerHeight-vv.height-vv.offsetTop);
-  return h>80?h:0;               /* 주소창 변화 같은 작은 차이는 무시 */
-}
 function ensureVisible(){
   const el=document.activeElement; if(!isField(el)) return;
   const vv=window.visualViewport;
   const top=(vv?vv.offsetTop:0)+12;
-  const bottom=(vv?vv.offsetTop+vv.height:window.innerHeight)-$("wiz-nav").offsetHeight-12;
+  const nav=$("wiz-nav"), navH=getComputedStyle(nav).display==="none"?0:nav.offsetHeight;   /* 입력 중엔 숨겨져 0 */
+  const bottom=(vv?vv.offsetTop+vv.height:window.innerHeight)-navH-12;
   const box=(el.closest(".num")||el).getBoundingClientRect();
-  const err=el.closest(".q")?.querySelector(".err:not([hidden])");
-  const low=err?Math.max(box.bottom,err.getBoundingClientRect().bottom):box.bottom;
+  let low=box.bottom;
+  const err=el.closest(".q")?.querySelector(".err:not([hidden])"); if(err) low=Math.max(low,err.getBoundingClientRect().bottom);
+  const inl=$("wiz-inline"); if(inl.offsetParent) low=Math.max(low,inl.getBoundingClientRect().bottom);
+  low=Math.min(low,box.top+(bottom-top));   /* 공간이 모자라면 입력 칸을 우선 */
   if(low>bottom) window.scrollBy(0,low-bottom);
   else if(box.top<top) window.scrollBy(0,box.top-top);
 }
-function onViewport(){
-  const k=kbHeight();
-  document.documentElement.style.setProperty("--kb",k+"px");
-  document.body.classList.toggle("kb",k>0);
-  ensureVisible();
-}
-if(window.visualViewport){
-  visualViewport.addEventListener("resize",onViewport);
-  visualViewport.addEventListener("scroll",onViewport);
-}
+/* 키패드가 열리고 닫힐 때(보이는 영역 크기 변화)만 위치 확인. 스크롤 중에는 건드리지 않음 */
+if(window.visualViewport) visualViewport.addEventListener("resize",()=>setTimeout(ensureVisible,50));
 window.addEventListener("resize",()=>setTimeout(ensureVisible,50));
 document.addEventListener("focusin",e=>{
   if(!isField(e.target)) return;
@@ -572,7 +576,12 @@ document.addEventListener("focusin",e=>{
 document.addEventListener("focusout",()=>setTimeout(()=>{
   if(!isField(document.activeElement)) document.body.classList.remove("typing");
 },120));
-document.addEventListener("input",e=>{if(isField(e.target)) ensureVisible();});   /* 오류 문구가 생겨도 보이게 */
+document.addEventListener("input",e=>{if(isField(e.target)) ensureVisible();});
+["bi-prev","bi-next"].forEach(id=>{
+  ["pointerdown","mousedown"].forEach(t=>$(id).addEventListener(t,e=>e.preventDefault()));
+});
+$("bi-next").addEventListener("click",()=>goNext());
+$("bi-prev").addEventListener("click",()=>$("b-prev").click());   /* 오류 문구가 생겨도 보이게 */
 
 /* 시작 */
 /* 휴대폰(600px 이하)만 한 문항씩, 넓은 화면은 전체 목록 */
