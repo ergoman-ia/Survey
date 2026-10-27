@@ -194,6 +194,8 @@ body.wiz .picker label{padding:10px 0;min-height:44px;justify-content:center}
 @media (max-width:600px){body.wiz .picker{grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}body.wiz .picker label span{display:none}}
 body.wiz .pick-title{padding-right:0;font-size:16px}
 body.wiz .card.miss::after{display:none}
+/* 휴대폰: 기본 정보(근로 시간~휴식 횟수) 이후에는 용어 설명 숨김 */
+body.wiz.past-basic .terms{display:none}
 body.wiz #b-show,body.wiz #left{display:none}
 body.wiz details.info-box summary{pointer-events:none;list-style:none}
 body.wiz details.info-box summary::-webkit-details-marker{display:none}
@@ -475,6 +477,7 @@ function renderInputs(){
 function renderLayout(){
   const off=ans["1a"]!=="yes";
   if(!wiz){
+    document.body.classList.remove("past-basic");
     document.querySelectorAll(".card,section.step,#borg,.q.result,main,aside").forEach(e=>e.hidden=false);
     $("c-1a").hidden=!ask1a(); $("c-2e").hidden=!ask2e(); $("r-2e").hidden=ask2e();
     ["s2","s3"].forEach(id=>{const s=$(id);s.classList.toggle("disabled",off);s.querySelectorAll("input,button").forEach(i=>i.disabled=off);});
@@ -482,6 +485,7 @@ function renderLayout(){
   }
   ["s2","s3"].forEach(id=>{const s=$(id);s.classList.remove("disabled");s.querySelectorAll("input,button").forEach(i=>i.disabled=false);});
   const sq=seq(), atResult=idx>=sq.length, cur=sq[idx];
+  document.body.classList.toggle("past-basic",atResult||!["c-info","c-hours","c-lunch","c-rep","c-breaks"].includes(cur));
   $("form").hidden=atResult; $("panel").hidden=!atResult;
   document.querySelectorAll(".card").forEach(c=>c.hidden=c.id!==cur);
   document.querySelectorAll(".q.result").forEach(c=>c.hidden=true);
