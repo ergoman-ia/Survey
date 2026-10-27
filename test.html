@@ -56,6 +56,7 @@ section.step{background:var(--surface);border:1px solid var(--line);border-radiu
 .card.miss{box-shadow:inset 4px 0 0 var(--warn)}
 .card.miss::after{content:"필수 · 답을 고르세요";position:absolute;font-size:12px;font-weight:700;color:var(--warn)}
 .q.card.miss::after{bottom:2px;right:18px}
+.q.numq.card.miss::after{content:"필수 · 값을 입력하세요"}
 .pick-block.card.miss::after{top:4px;right:0}
 .yn{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;align-self:start}
 .yn input{position:absolute;opacity:0;pointer-events:none}
@@ -125,10 +126,24 @@ button.btn:disabled{opacity:.4;cursor:not-allowed}
 .num{display:flex;align-items:center;gap:10px;margin-top:4px}
 .num input{font:inherit;font-size:20px;font-variant-numeric:tabular-nums;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;width:150px}
 .num input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.num span{font-size:16px;font-weight:500}
-.text small.err{color:var(--warn);font-weight:700}
+.num span{font-size:16px;font-weight:500;width:2.2em}
+.err{font-size:13px;color:var(--warn);font-weight:700;text-wrap:balance}
 .text small.ref{color:var(--accent);font-weight:700}
 .foot{font-size:13px;color:var(--muted);margin:0}
+/* 넓은 화면: 왼쪽 질문, 오른쪽 입력 */
+.ans{display:flex;flex-direction:column;gap:6px;min-width:0}
+body:not(.wiz) .q.numq{grid-template-columns:96px minmax(0,1fr) 300px;padding-bottom:20px}
+body:not(.wiz) .q.numq .ans{align-items:flex-end;text-align:right}
+body:not(.wiz) .q.numq .num{margin-top:0}
+body:not(.wiz) .q.numq .num input{width:130px;font-size:18px;padding:7px 10px}
+body:not(.wiz) .pick-block{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px 16px;align-items:start;padding-top:22px}
+body:not(.wiz) .pick-title{flex-direction:column;justify-content:flex-start;gap:2px;padding-right:0;padding-top:8px}
+body:not(.wiz) .pick-block .sub{grid-column:1/-1}
+body:not(.wiz) .info{grid-template-columns:minmax(0,1fr)}
+body:not(.wiz) .info label{display:grid;grid-template-columns:150px minmax(0,1fr);align-items:center;gap:16px;font-size:14px}
+body:not(.wiz) .info input{font-size:15px}
+@media (max-width:600px){body:not(.wiz) .q.numq,body:not(.wiz) .pick-block,body:not(.wiz) .info label{grid-template-columns:minmax(0,1fr)}}
+
 /* 한 문항씩 넘기는 화면 */
 @media (max-width:600px){
   body.wiz.typing{padding-top:8px}
@@ -205,10 +220,10 @@ body.wiz details.info-box summary::-webkit-details-marker{display:none}
 
   <section class="step s0" id="s0" data-stage="기본 정보 · 필수">
     <div class="step-head"><span class="step-no">기본 정보</span><h2>근무와 휴식</h2></div>
-    <div class="q card numq" id="c-hours"><div class="tag"><span class="code">기본 1</span>근무 시간</div><div class="text">1교대 근무 시간은 몇 시간인가?<small>식사·휴식 시간을 포함한 전체 시간</small><div class="num"><input id="n-hours" type="number" inputmode="decimal" min="0.5" max="24" step="0.5" placeholder="예: 8" autocomplete="off"><span>시간</span></div><small class="err" id="e-hours" hidden></small></div></div>
-    <div class="q card numq" id="c-lunch"><div class="tag"><span class="code">기본 2</span>점심 휴식</div><div class="text">점심(식사) 휴식 시간은 몇 분인가?<small>근무 시간 안에 든 식사 시간 · 없으면 0</small><div class="num"><input id="n-lunch" type="number" inputmode="numeric" min="0" max="180" step="1" placeholder="예: 60" autocomplete="off"><span>분</span></div><small class="err" id="e-lunch" hidden></small></div></div>
-    <div class="q card numq" id="c-rep"><div class="tag"><span class="code">기본 3</span>반복 작업 시간</div><div class="text">팔·손 반복 동작을 실제로 한 시간은 모두 몇 시간인가?<small>점심·쉬는 시간을 뺀 합계 · 2f, 3f를 자동 판정</small><div class="num"><input id="n-rep" type="number" inputmode="decimal" min="0" max="24" step="0.5" placeholder="예: 6" autocomplete="off"><span>시간</span></div><small class="err" id="e-rep" hidden></small></div></div>
-    <div class="q card numq" id="c-breaks"><div class="tag"><span class="code">기본 4</span>휴식 횟수</div><div class="text">10분 이상 쉬는 횟수는 1교대에 몇 번인가?<small>점심 등 식사 시간도 1번으로 셈</small><div class="num"><input id="n-breaks" type="number" inputmode="numeric" min="0" max="20" step="1" placeholder="예: 3" autocomplete="off"><span>번</span></div><small class="err" id="e-breaks" hidden></small></div></div>
+    <div class="q card numq" id="c-hours"><div class="tag"><span class="code">기본 1</span>근무 시간</div><div class="text">1교대 근무 시간은 몇 시간인가?<small>식사·휴식 시간을 포함한 전체 시간</small></div><div class="ans"><div class="num"><input id="n-hours" type="number" inputmode="decimal" min="0.5" max="24" step="0.5" placeholder="예: 8" autocomplete="off"><span>시간</span></div><small class="err" id="e-hours" hidden></small></div></div>
+    <div class="q card numq" id="c-lunch"><div class="tag"><span class="code">기본 2</span>점심 휴식</div><div class="text">점심(식사) 휴식 시간은 몇 분인가?<small>근무 시간 안에 든 식사 시간 · 없으면 0</small></div><div class="ans"><div class="num"><input id="n-lunch" type="number" inputmode="numeric" min="0" max="180" step="1" placeholder="예: 60" autocomplete="off"><span>분</span></div><small class="err" id="e-lunch" hidden></small></div></div>
+    <div class="q card numq" id="c-rep"><div class="tag"><span class="code">기본 3</span>반복 작업 시간</div><div class="text">팔·손 반복 동작을 실제로 한 시간은 모두 몇 시간인가?<small>점심·쉬는 시간을 뺀 합계 · 2f, 3f를 자동 판정</small></div><div class="ans"><div class="num"><input id="n-rep" type="number" inputmode="decimal" min="0" max="24" step="0.5" placeholder="예: 6" autocomplete="off"><span>시간</span></div><small class="err" id="e-rep" hidden></small></div></div>
+    <div class="q card numq" id="c-breaks"><div class="tag"><span class="code">기본 4</span>휴식 횟수</div><div class="text">10분 이상 쉬는 횟수는 1교대에 몇 번인가?<small>점심 등 식사 시간도 1번으로 셈</small></div><div class="ans"><div class="num"><input id="n-breaks" type="number" inputmode="numeric" min="0" max="20" step="1" placeholder="예: 3" autocomplete="off"><span>번</span></div><small class="err" id="e-breaks" hidden></small></div></div>
   </section>
 
   <section class="step s1" id="s1" data-stage="1단계 · 평가 대상">
@@ -310,18 +325,18 @@ function numState(k){
   if(k==="lunch"){
     if(!Number.isInteger(n)||n<0||n>180) return {v:null,err:"0~180 사이의 정수(분)로 입력하세요."};
     const h=numState("hours").v;
-    if(h!==null&&n>=h*60) return {v:null,err:`근무 시간(${fmt(h)}시간)보다 짧아야 합니다.`};
+    if(h!==null&&n>=h*60) return {v:null,err:`근무 시간(${fmt(h)}시간)보다 짧게 입력하세요.`};
   }
   if(k==="rep"){
     if(n<0||n>24) return {v:null,err:"0~24 사이로 입력하세요."};
     const h=numState("hours").v, l=numState("lunch").v;
-    if(h!==null&&l!==null&&n>h-l/60) return {v:null,err:`근무 시간에서 점심을 뺀 ${fmt(h-l/60)}시간보다 클 수 없습니다.`};
-    if(h!==null&&n>h) return {v:null,err:`근무 시간(${fmt(h)}시간)보다 클 수 없습니다.`};
+    if(h!==null&&l!==null&&n>h-l/60) return {v:null,err:`근무에서 점심을 뺀 ${fmt(h-l/60)}시간 이하로 입력하세요.`};
+    if(h!==null&&n>h) return {v:null,err:`근무 시간(${fmt(h)}시간) 이하로 입력하세요.`};
   }
   if(k==="breaks"){
     if(!Number.isInteger(n)||n<0||n>20) return {v:null,err:"0~20 사이의 정수로 입력하세요."};
     const l=numState("lunch").v;
-    if(l!==null&&l>=10&&n<1) return {v:null,err:`점심 휴식(${l}분)도 10분 이상 휴식 1번으로 셉니다. 1 이상으로 입력하세요.`};
+    if(l!==null&&l>=10&&n<1) return {v:null,err:`점심(${l}분)도 휴식 1번이니 1 이상으로 입력하세요.`};
   }
   return {v:n,err:""};
 }
@@ -533,7 +548,7 @@ function ensureVisible(){
   const top=(vv?vv.offsetTop:0)+12;
   const bottom=(vv?vv.offsetTop+vv.height:window.innerHeight)-$("wiz-nav").offsetHeight-12;
   const box=(el.closest(".num")||el).getBoundingClientRect();
-  const err=el.closest(".text")?.querySelector(".err:not([hidden])");
+  const err=el.closest(".q")?.querySelector(".err:not([hidden])");
   const low=err?Math.max(box.bottom,err.getBoundingClientRect().bottom):box.bottom;
   if(low>bottom) window.scrollBy(0,low-bottom);
   else if(box.top<top) window.scrollBy(0,box.top-top);
