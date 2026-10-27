@@ -108,13 +108,20 @@ aside{position:sticky;top:16px;display:flex;flex-direction:column;gap:14px}
 .verdict{border-radius:10px;padding:18px;border:2px solid var(--line);background:var(--surface)}
 .verdict .lbl{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;color:var(--muted)}
 .verdict h2{margin:4px 0 8px;font-size:22px}
-.verdict p{margin:0;font-size:14px}
+.verdict p{margin:0;font-size:14px;word-break:keep-all}
 .verdict.ok{border-color:var(--ok);background:var(--ok-soft)} .verdict.ok h2{color:var(--ok)}
 .verdict.crit{border-color:var(--crit);background:var(--crit-soft)} .verdict.crit h2{color:var(--crit)}
 .verdict.mid{border-color:var(--mid);background:var(--mid-soft)} .verdict.mid h2{color:var(--mid)}
 .verdict.none h2{color:var(--accent)}
 .verdict.warn{border-color:var(--warn)} .verdict.warn h2{color:var(--warn)}
-.flags{margin:10px 0 0;padding-left:18px;font-size:13px}
+.flags{margin:12px 0 0;padding:0;list-style:none;font-size:13px;display:flex;flex-direction:column;gap:8px}
+.flags li{display:grid;grid-template-columns:68px minmax(0,1fr);gap:2px 8px;align-items:start;word-break:keep-all}
+.flags .lv{font-size:12px;font-weight:700;padding:1px 0;border-radius:999px;white-space:nowrap;grid-row:span 2;text-align:center}
+.flags .lv.crit{background:var(--crit);color:var(--surface)}
+.flags .lv.mid{background:var(--mid);color:var(--surface)}
+.flags b{font-weight:700}
+.flags span.why{color:var(--fg);opacity:.85}
+.flags-note{margin:12px 0 0;padding-top:10px;border-top:1px dashed var(--line);font-size:12px;color:var(--muted);word-break:keep-all}
 .left{font-size:14px;color:var(--muted);margin:0;font-variant-numeric:tabular-nums}
 .btns{display:flex;gap:8px;flex-wrap:wrap}
 button.btn{font:inherit;font-size:15px;padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer;min-height:44px}
@@ -294,6 +301,7 @@ body.wiz details.info-box summary::-webkit-details-marker{display:none}
     <h2 id="v-title">결과 보기 전</h2>
     <p id="v-text">모든 필수 문항에 답한 뒤 ‘결과 보기’를 누르세요.</p>
     <ul class="flags" id="flags" hidden></ul>
+    <p class="flags-note" id="flags-note" hidden>하나라도 심각이면 심각, 심각 없이 정밀 평가 항목이 있으면 정밀 평가 필요, 모두 허용이면 허용입니다.</p>
   </div>
   <p class="left" id="left"></p>
   <div class="btns">
@@ -405,10 +413,26 @@ function derive(){
     if(st.peak<5) ans["3d"]="no"; else if(st.dur3d) ans["3d"]=st.dur3d;
   }
 }
+/* 위험 요인별 단계: 허용(ok) / 정밀 평가(mid) / 심각(crit). 최종 결과는 가장 나쁜 단계 */
+function factors(){
+  const a=q=>ans[q];
+  return [
+    {name:"동작 속도",lv:a("3a")==="yes"?"crit":"ok",crit:"한쪽 팔의 동작이 너무 빨라 셀 수 없거나 따라가기 힘듦 (3a)"},
+    {name:"팔 사용 시간",lv:a("2a")==="no"?"mid":"ok",mid:"팔을 움직여 일하는 시간이 반복 작업(업무) 시간의 50% 이상 (2a)"},
+    {name:"어깨 자세",lv:a("3b")==="yes"?"crit":a("2b")==="no"?"mid":"ok",crit:"팔꿈치가 어깨 높이인 시간이 50% 이상 (3b)",mid:"팔꿈치가 어깨 높이 이상인 시간이 약 5% 초과, 50% 미만 (2b)"},
+    {name:"손가락 자세",lv:a("3c")==="yes"?"crit":"ok",crit:"손끝으로 집거나 쥐는 시간이 80% 초과 (3c)"},
+    {name:"평소 힘",lv:a("2c")==="no"?"mid":"ok",mid:"평소 힘이 3점을 넘거나, 그 힘을 하루 1시간 넘게 씀 (2c)"},
+    {name:"센 힘",lv:a("3d")==="yes"?"crit":a("2d")==="no"?"mid":"ok",crit:"5점 이상의 힘을 반복 작업(업무) 시간의 10% 이상 씀 (3d)",mid:"5점 이상의 힘을 쓰지만 10% 미만 (2d)"},
+    {name:"휴식",lv:a("3e")==="yes"?"crit":a("2e")==="no"?"mid":"ok",crit:"6시간 이상 근로에 휴식(점심 포함)이 1번 이하 (3e)",mid:"2시간마다 10분 이상 쉬지 못함 (2e)"},
+    {name:"반복 작업(업무) 시간",lv:a("3f")==="yes"?"crit":a("2f")==="no"?"mid":"ok",crit:"반복 작업(업무)이 근로(교대) 시간 안에서 8시간 초과 (3f)",mid:"반복 작업(업무)이 하루 8시간 초과 (2f)"}
+  ];
+}
+const LV_NAME={crit:"심각",mid:"정밀 평가",ok:"허용"};
+function badFactors(){ return factors().filter(f=>f.lv!=="ok").sort((x,y)=>(x.lv==="crit"?0:1)-(y.lv==="crit"?0:1)); }
 function verdict(){
   if(ans["1a"]==="no") return {cls:"none",t:"평가 대상 아님",p:"추가 평가가 필요 없습니다."};
-  if(Q3.some(q=>ans[q]==="yes")) return {cls:"crit",t:"심각",p:"‘예’ 항목부터 바로 개선하세요. 정밀 평가도 필요합니다."};
-  if(Q2.some(q=>ans[q]==="no")) return {cls:"mid",t:"중간",p:"정밀 평가가 필요합니다."};
+  if(Q3.some(q=>ans[q]==="yes")) return {cls:"crit",t:"심각",p:"‘심각’ 항목부터 바로 개선하세요. 정밀 평가도 필요합니다."};
+  if(Q2.some(q=>ans[q]==="no")) return {cls:"mid",t:"정밀 평가 필요",p:"빠른 평가로는 허용도 심각도 아닙니다. OCRA 등 정밀(정량) 평가 방법으로 위험 수준을 판단하세요."};
   return {cls:"ok",t:"허용",p:"추가 평가가 필요 없습니다."};
 }
 
@@ -522,10 +546,13 @@ function showResult(){
   $("v-title").textContent=v.t; $("v-text").textContent=v.p;
   const ul=$("flags"); ul.textContent="";
   if(ans["1a"]==="yes"){
-    Q2.filter(q=>ans[q]==="no").forEach(q=>{const li=document.createElement("li");li.textContent=`${q} ${LABEL[q]}: 충족 안 됨`;ul.appendChild(li);});
-    Q3.filter(q=>ans[q]==="yes").forEach(q=>{const li=document.createElement("li");li.textContent=`${q} ${LABEL[q]}: 위험`;ul.appendChild(li);});
+    badFactors().forEach(f=>{
+      const li=document.createElement("li"), lv=document.createElement("span"), nm=document.createElement("b"), why=document.createElement("span");
+      lv.className="lv "+f.lv; lv.textContent=LV_NAME[f.lv]; nm.textContent=f.name; why.className="why"; why.textContent=f[f.lv];
+      li.append(lv,nm,why); ul.appendChild(li);
+    });
   }
-  ul.hidden=!ul.children.length;
+  ul.hidden=!ul.children.length; $("flags-note").hidden=ul.hidden;
   shown=true; $("b-copy").disabled=false; $("msg").textContent="";
   return true;
 }
@@ -537,7 +564,13 @@ function summary(){
 ]
     .forEach(([k,id])=>{if(g(id))lines.push(`${k}: ${g(id)}`);});
   lines.push(`근로(교대) 시간: ${fmt(numVal("hours"))}시간`,`점심 휴식 시간: ${numVal("lunch")}분`,`반복 작업(업무) 시간(합계): ${fmt(numVal("rep"))}시간`,`10분 이상 휴식: ${numVal("breaks")}번`);
-  lines.push(`판정: ${v.t}`, v.p, "");
+  lines.push(`판정: ${v.t}`, v.p);
+  if(ans["1a"]==="yes"){
+    const bad=badFactors();
+    lines.push(bad.length?"판정 근거(하나라도 심각이면 심각, 그 밖에 정밀 평가 항목이 있으면 정밀 평가 필요):":"판정 근거: 모든 항목 허용");
+    bad.forEach(f=>lines.push(`- [${LV_NAME[f.lv]}] ${f.name}: ${f[f.lv]}`));
+  }
+  lines.push("");
   if(ans["1a"]==="yes"){lines.push(`힘 점수(평소): ${st.typ}점`,`힘 점수(최고): ${st.peak}점`);}
   ["1a",...(ans["1a"]==="yes"?[...Q2,...Q3]:[])].forEach(q=>lines.push(`${q} ${LABEL[q]}: ${ans[q]==="yes"?"예":"아니요"}`+(autoQ().includes(q)?" (자동)":"")));
   return lines.join("\n");
